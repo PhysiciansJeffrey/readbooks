@@ -1,0 +1,17 @@
+
+{
+  "compilerOptions": {
+    "allowJs": true,
+    "moduleResolution": "bundler",
+ 
+    "target": "ESNext",
+    "module": "ESNext",
+    "resolveJsonModule": true,
+    "noEmit": true,  
+ 
+    "checkJs": false,
+    "strict": true,
+    "skipLibCheck": true,
+  },
+  "include": ["src/**/*.d.ts", "src/**/*.js", "src/**/*.jsx", "src/**/*.vue", "bindings"]
+}
