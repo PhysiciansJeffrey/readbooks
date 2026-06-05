@@ -206,18 +206,6 @@ func UpdateBookProgress(id int64, page int) error {
 	return nil
 }
 
-func UpdateBook(book *Book) error {
-	_, err := DB.Exec(
-		`UPDATE books SET title=?, author=?, description=?, parent=?, sort_order=?, file_path=?, total_pages=?, current_page=?, cover_url=?, jmid=?, status=?, updated_at=?
-		 WHERE id=?`,
-		book.Title, book.Author, book.Description, book.Parent, book.SortOrder, book.FilePath, book.TotalPages, book.CurrentPage, book.CoverURL, book.JMID, book.Status, time.Now(), book.ID,
-	)
-	if err != nil {
-		return fmt.Errorf("更新书籍失败: %w", err)
-	}
-	return nil
-}
-
 func GetChapters(jmid int64, parent int) ([]*Book, error) {
 	var rows *sql.Rows
 	var err error

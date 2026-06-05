@@ -59,26 +59,6 @@ func DeleteTag(id int64) error {
 	return tx.Commit()
 }
 
-func ListTags() ([]*Tag, error) {
-	rows, err := DB.Query(
-		`SELECT id, name, color, sort_order FROM tags ORDER BY sort_order, id`,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("查询标签列表失败: %w", err)
-	}
-	defer rows.Close()
-
-	var tags []*Tag
-	for rows.Next() {
-		var t Tag
-		if err := rows.Scan(&t.ID, &t.Name, &t.Color, &t.SortOrder); err != nil {
-			return nil, fmt.Errorf("扫描标签数据失败: %w", err)
-		}
-		tags = append(tags, &t)
-	}
-	return tags, nil
-}
-
 // TagWithCount 标签及其关联漫画数量
 type TagWithCount struct {
 	ID        int64  `json:"id"`
@@ -210,43 +190,3 @@ func BatchGetBookTags(bookIDs []int64) (map[int64][]*Tag, error) {
 	return result, nil
 }
 
-// GetBooksByTag 返回指定标签下的所有书籍
-func GetBooksByTag(tagID int64, page, pageSize int) ([]*Book, int, error) {
-	if page < 1 {
-		page = 1
-	}
-	if pageSize < 1 {
-		pageSize = 10
-	}
-
-	var total int
-	err := DB.QueryRow(
-		`SELECT COUNT(*) FROM book_tags WHERE tag_id=?`, tagID,
-	).Scan(&total)
-	if err != nil {
-		return nil, 0, fmt.Errorf("统计标签书籍数量失败: %w", err)
-	}
-
-	rows, err := DB.Query(
-		`SELECT b.id, b.title, b.author, b.description, b.parent, b.sort_order, b.file_path, b.total_pages, b.current_page, b.cover_url, b.jmid, b.status, b.created_at, b.updated_at
-		 FROM books b
-		 INNER JOIN book_tags bt ON bt.book_id = b.id
-		 WHERE bt.tag_id = ?
-		 ORDER BY b.updated_at DESC LIMIT ? OFFSET ?`,
-		tagID, pageSize, (page-1)*pageSize,
-	)
-	if err != nil {
-		return nil, 0, fmt.Errorf("查询标签书籍失败: %w", err)
-	}
-	defer rows.Close()
-
-	var books []*Book
-	for rows.Next() {
-		var b Book
-		if err := rows.Scan(&b.ID, &b.Title, &b.Author, &b.Description, &b.Parent, &b.SortOrder, &b.FilePath, &b.TotalPages, &b.CurrentPage, &b.CoverURL, &b.JMID, &b.Status, &b.CreatedAt, &b.UpdatedAt); err != nil {
-			return nil, 0, fmt.Errorf("扫描书籍数据失败: %w", err)
-		}
-		books = append(books, &b)
-	}
-	return books, total, nil
-}

@@ -51,13 +51,13 @@ wails3 build   // 生产版本 .exe
 
 ## 图片服务
 
-封面通过 Wails AssetOptions Middleware 提供：
+图片通过 Wails AssetOptions Middleware 提供：
 
 ```
 GET /api/image?cover=1&p={filePath}
 ```
 
-- `cover=1`：返回压缩缩略图（宽 400px，JPEG quality 80）
+- `cover=1`：返回封面压缩缩略图（宽 400px，JPEG quality 80）
 - 无 cover 参数：返回原图
 - 内存缓存最多 20 张缩略图
 

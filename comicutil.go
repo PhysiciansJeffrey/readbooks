@@ -49,33 +49,6 @@ func scanImages(folder string) ([]string, error) {
 	return images, nil
 }
 
-// collectImageFolders 递归遍历目录，收集所有包含图片的文件夹路径
-// 如果当前文件夹包含图片，记录该路径并继续下探子文件夹
-func collectImageFolders(root string, result *[]string) {
-	entries, err := os.ReadDir(root)
-	if err != nil {
-		return
-	}
-
-	hasImage := false
-	var subDirs []string
-	for _, e := range entries {
-		if e.IsDir() {
-			subDirs = append(subDirs, filepath.Join(root, e.Name()))
-		} else if isImage(e.Name()) {
-			hasImage = true
-		}
-	}
-
-	if hasImage {
-		*result = append(*result, root)
-	}
-
-	for _, d := range subDirs {
-		collectImageFolders(d, result)
-	}
-}
-
 type flexString string
 
 func (s *flexString) UnmarshalJSON(data []byte) error {

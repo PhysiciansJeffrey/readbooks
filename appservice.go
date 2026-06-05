@@ -42,64 +42,6 @@ func init() {
 
 // ========== 书籍 ==========
 
-func (a *AppService) AddComic(s string) map[string]any {
-	result := map[string]any{
-		"success": false,
-	}
-
-	// 重复检查：file_path
-	books, _, _ := storage.ListBooks(1, 10000)
-	for _, b := range books {
-		if b.FilePath == s {
-			result["error"] = fmt.Sprintf("路径已存在 (ID:%d)", b.ID)
-			return result
-		}
-	}
-
-	// 重复检查：标题（文件夹名）
-	title := filepath.Base(s)
-	for _, b := range books {
-		if b.Title == title {
-			result["error"] = fmt.Sprintf("标题已存在 (ID:%d)", b.ID)
-			return result
-		}
-	}
-
-	// 扫描图片
-	images, err := scanImages(s)
-	if err != nil {
-		result["error"] = err.Error()
-		return result
-	}
-
-	totalPages := len(images)
-	if totalPages == 0 {
-		result["error"] = "该文件夹下没有图片文件"
-		return result
-	}
-	coverURL := images[0]
-
-	// 入库
-	book := &storage.Book{
-		Title:      title,
-		FilePath:   s,
-		TotalPages: totalPages,
-		CoverURL:   coverURL,
-		Status:     "未读",
-	}
-	id, err := storage.CreateBook(book)
-	if err != nil {
-		result["error"] = err.Error()
-		return result
-	}
-	images = nil
-	result["success"] = true
-	result["id"] = fmt.Sprintf("%d", id)
-	result["title"] = title
-	result["total_pages"] = fmt.Sprintf("%d", totalPages)
-	return result
-}
-
 // createBookFromFolder 扫描图片并创建漫画记录（不做重复检查，由调用方保证）
 func (a *AppService) createBookFromFolder(s string) (int64, string, int, error) {
 	images, err := scanImages(s)
@@ -239,10 +181,6 @@ func (a *AppService) AddsComic(s string) map[string]any {
 	return result
 }
 
-func (a *AppService) BookCreate(book *storage.Book) (int64, error) {
-	return storage.CreateBook(book)
-}
-
 func (a *AppService) BookGet(idStr string) (map[string]any, error) {
 	// 自动判断是标题名还是id进行获取
 	var book *storage.Book
@@ -310,35 +248,12 @@ func (a *AppService) BookSearch(keyword string, page, pageSize int) ([]*storage.
 	return storage.SearchBooks(keyword, page, pageSize)
 }
 
-func (a *AppService) BookUpdate(book *storage.Book) error {
-	return storage.UpdateBook(book)
-}
-
-func (a *AppService) BookUpdateProgress(bookID int64, page int) error {
-	return storage.UpdateBookProgress(bookID, page)
-}
-
 func (a *AppService) GetChapters(jmid int64, parent int) ([]*storage.Book, error) {
 	return storage.GetChapters(jmid, parent)
 }
 
-func (a *AppService) BookGetChapters(jmid int64, parent int) ([]map[string]any, error) {
-	books, err := storage.GetChapters(jmid, parent)
-	if err != nil {
-		return nil, err
-	}
-	var result []map[string]any
-	for _, b := range books {
-		result = append(result, map[string]any{
-			"id":           b.ID,
-			"title":        b.Title,
-			"total_pages":  b.TotalPages,
-			"current_page": b.CurrentPage,
-			"jmid":         b.JMID,
-			"status":       b.Status,
-		})
-	}
-	return result, nil
+func (a *AppService) BookUpdateProgress(bookID int64, page int) error {
+	return storage.UpdateBookProgress(bookID, page)
 }
 
 func (a *AppService) BookDelete(id int64) error {
@@ -378,10 +293,6 @@ func (a *AppService) TagDelete(id int64) error {
 	return storage.DeleteTag(id)
 }
 
-func (a *AppService) TagList() ([]*storage.Tag, error) {
-	return storage.ListTags()
-}
-
 func (a *AppService) TagListWithCount() ([]*storage.TagWithCount, error) {
 	return storage.ListTagsWithCount()
 }
@@ -392,20 +303,6 @@ func (a *AppService) BookSetTags(bookID int64, tagIDs []int64) error {
 
 func (a *AppService) BookGetTags(bookID int64) ([]*storage.Tag, error) {
 	return storage.GetBookTags(bookID)
-}
-
-func (a *AppService) BookGetByTag(tagID int64, page, pageSize int) ([]*storage.Book, int, error) {
-	return storage.GetBooksByTag(tagID, page, pageSize)
-}
-
-// ========== 图片 ==========
-
-func (a *AppService) GetImage(path string) ([]byte, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("读取图片失败: %w", err)
-	}
-	return data, nil
 }
 
 // ========== 窗口尺寸 ==========
@@ -456,57 +353,12 @@ func (a *AppService) LoadWindowSize() (int, int, error) {
 	return w, h, nil
 }
 
-// ========== 下载目录 ==========
+// ========== 默认漫画目录 ==========
 
 func getDownloadStatePath() string {
 	exePath, _ := os.Executable()
 	return filepath.Join(filepath.Dir(exePath), "state.json")
 }
-
-func (a *AppService) GetDefaultDownloadDir() string {
-	exePath, _ := os.Executable()
-	return filepath.Join(filepath.Dir(exePath), "file-download")
-}
-
-func (a *AppService) GetDownloadDir() string {
-	statePath := getDownloadStatePath()
-	data, err := os.ReadFile(statePath)
-	if err != nil {
-		// state.json 不存在，返回默认值
-		exePath, _ := os.Executable()
-		return filepath.Join(filepath.Dir(exePath), "file-download")
-	}
-	var state struct {
-		DownloadDir string `json:"download_dir"`
-	}
-	if err := json.Unmarshal(data, &state); err != nil || state.DownloadDir == "" {
-		exePath, _ := os.Executable()
-		return filepath.Join(filepath.Dir(exePath), "file-download")
-	}
-	return state.DownloadDir
-}
-
-func (a *AppService) SetDownloadDir(dir string) error {
-	statePath := getDownloadStatePath()
-	var state map[string]any
-	if data, err := os.ReadFile(statePath); err == nil {
-		json.Unmarshal(data, &state)
-	}
-	if state == nil {
-		state = map[string]any{}
-	}
-	state["download_dir"] = dir
-	data, err := json.MarshalIndent(state, "", "  ")
-	if err != nil {
-		return fmt.Errorf("序列化配置失败: %w", err)
-	}
-	if err := os.WriteFile(statePath, data, 0644); err != nil {
-		return fmt.Errorf("保存配置失败: %w", err)
-	}
-	return nil
-}
-
-// ========== 默认漫画目录 ==========
 
 func (a *AppService) GetDefaultComicDir() string {
 	statePath := getDownloadStatePath()
