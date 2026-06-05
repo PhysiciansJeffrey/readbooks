@@ -4,7 +4,6 @@ import { useRoute } from 'vue-router'
 import { BookSearch } from '../../bindings/ReadBooks/appservice'
 import ComicGrid from '@/components/ComicGrid.vue'
 import Pagination from '@/components/Pagination.vue'
-import RandomFloatBtn from '@/components/RandomFloatBtn.vue'
 
 const route = useRoute()
 
@@ -114,7 +113,7 @@ onMounted(() => {
 
     <!-- 搜索结果网格 + 翻页 -->
     <template v-else>
-      <ComicGrid :comics="comics" />
+      <ComicGrid :comics="comics" @refresh="fetchResults(currentPage)" />
       <Pagination
         :current-page="currentPage"
         :total-pages="totalPages"
@@ -127,7 +126,6 @@ onMounted(() => {
       />
     </template>
   </div>
-  <RandomFloatBtn />
 </template>
 
 <style scoped>

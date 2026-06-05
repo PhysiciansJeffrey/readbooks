@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 	"unsafe"
 
@@ -91,12 +92,36 @@ func (a *AppService) AddComic(s string) map[string]any {
 		result["error"] = err.Error()
 		return result
 	}
-
+	images = nil
 	result["success"] = true
 	result["id"] = fmt.Sprintf("%d", id)
 	result["title"] = title
 	result["total_pages"] = fmt.Sprintf("%d", totalPages)
 	return result
+}
+
+// createBookFromFolder 扫描图片并创建漫画记录（不做重复检查，由调用方保证）
+func (a *AppService) createBookFromFolder(s string) (int64, string, int, error) {
+	images, err := scanImages(s)
+	if err != nil {
+		return 0, "", 0, err
+	}
+	totalPages := len(images)
+	if totalPages == 0 {
+		return 0, "", 0, fmt.Errorf("该文件夹下没有图片文件")
+	}
+	title := filepath.Base(s)
+	id, err := storage.CreateBook(&storage.Book{
+		Title:      title,
+		FilePath:   s,
+		TotalPages: totalPages,
+		CoverURL:   images[0],
+		Status:     "未读",
+	})
+	if err != nil {
+		return 0, "", 0, err
+	}
+	return id, title, totalPages, nil
 }
 
 func (a *AppService) AddsComic(s string) map[string]any {
@@ -106,15 +131,51 @@ func (a *AppService) AddsComic(s string) map[string]any {
 		"skipped": 0,
 	}
 
-	// Phase 1: 遍历所有文件夹，分类收集
-	var metaFolders []string
-	var imageFolders []string
+	// 预加载已有书籍用于去重（只查一次）
+	books, _, _ := storage.ListBooks(1, 10000)
+	pathSet := make(map[string]struct{}, len(books))
+	titleSet := make(map[string]struct{}, len(books))
+	for _, b := range books {
+		pathSet[b.FilePath] = struct{}{}
+		titleSet[b.Title] = struct{}{}
+	}
+	books = nil // 释放引用，让 GC 可以回收
+
+	var (
+		mu             sync.Mutex
+		wg             sync.WaitGroup
+		sem            = make(chan struct{}, 4) // 最多 4 个并发，防止内存暴增
+		added, skipped int
+	)
 
 	var walk func(path string)
 	walk = func(path string) {
-		// 有元数据.json → 记录为meta目录，不再递归下层
+		// 有元数据.json → 按 meta 处理，不再递归下层
 		if _, err := os.Stat(filepath.Join(path, "元数据.json")); err == nil {
-			metaFolders = append(metaFolders, path)
+			mu.Lock()
+			_, dup := pathSet[path]
+			mu.Unlock()
+			if dup {
+				mu.Lock()
+				skipped++
+				mu.Unlock()
+				return
+			}
+			wg.Add(1)
+			go func(folder string) {
+				sem <- struct{}{}
+				defer func() { <-sem }()
+				defer wg.Done()
+				r := comicIsJm(folder)
+				mu.Lock()
+				if r["success"] == true {
+					added += r["added"].(int)
+					skipped += r["skipped"].(int)
+				} else {
+					skipped++
+				}
+				mu.Unlock()
+			}(path)
 			return
 		}
 
@@ -134,7 +195,34 @@ func (a *AppService) AddsComic(s string) map[string]any {
 		}
 
 		if hasImage {
-			imageFolders = append(imageFolders, path)
+			title := filepath.Base(path)
+			mu.Lock()
+			_, pathDup := pathSet[path]
+			_, titleDup := titleSet[title]
+			mu.Unlock()
+
+			if pathDup || titleDup {
+				mu.Lock()
+				skipped++
+				mu.Unlock()
+			} else {
+				wg.Add(1)
+				go func(folder string) {
+					sem <- struct{}{}
+					defer func() { <-sem }()
+					defer wg.Done()
+					_, title, _, err := a.createBookFromFolder(folder)
+					mu.Lock()
+					if err == nil {
+						pathSet[folder] = struct{}{}
+						titleSet[title] = struct{}{}
+						added++
+					} else {
+						skipped++
+					}
+					mu.Unlock()
+				}(path)
+			}
 		}
 
 		for _, d := range subDirs {
@@ -143,34 +231,7 @@ func (a *AppService) AddsComic(s string) map[string]any {
 	}
 
 	walk(s)
-
-	if len(metaFolders) == 0 && len(imageFolders) == 0 {
-		result["error"] = "未找到包含图片的文件夹"
-		return result
-	}
-
-	// Phase 2: 按分类处理
-	added := 0
-	skipped := 0
-
-	for _, f := range metaFolders {
-		r := comicIsJm(f)
-		if r["success"] == true {
-			added += r["added"].(int)
-			skipped += r["skipped"].(int)
-		} else {
-			skipped++
-		}
-	}
-
-	for _, f := range imageFolders {
-		r := a.AddComic(f)
-		if r["success"] == true {
-			added++
-		} else {
-			skipped++
-		}
-	}
+	wg.Wait()
 
 	result["success"] = true
 	result["added"] = added
@@ -258,9 +319,6 @@ func (a *AppService) BookUpdateProgress(bookID int64, page int) error {
 }
 
 func (a *AppService) GetChapters(jmid int64, parent int) ([]*storage.Book, error) {
-	// 传入 jmid 和 parent
-	// 如果 parent <= 1：只用 jmid 查同系列漫画
-	// 如果 parent > 1：用 parent 查子漫画 + 用 jmid 查同系列，合并返回
 	return storage.GetChapters(jmid, parent)
 }
 
@@ -285,6 +343,25 @@ func (a *AppService) BookGetChapters(jmid int64, parent int) ([]map[string]any, 
 
 func (a *AppService) BookDelete(id int64) error {
 	return storage.DeleteBook(id)
+}
+
+func (a *AppService) BookDeleteWithFiles(id int64) error {
+	book, err := storage.GetBook(id)
+	if err != nil {
+		return fmt.Errorf("获取书籍信息失败: %w", err)
+	}
+
+	if err := storage.DeleteBook(id); err != nil {
+		return err
+	}
+
+	if book.FilePath != "" {
+		if err := os.RemoveAll(book.FilePath); err != nil {
+			return fmt.Errorf("删除文件夹失败: %w", err)
+		}
+	}
+
+	return nil
 }
 
 // ========== 标签 ==========
@@ -331,6 +408,54 @@ func (a *AppService) GetImage(path string) ([]byte, error) {
 	return data, nil
 }
 
+// ========== 窗口尺寸 ==========
+
+// loadWindowSize 从 state.json 读取窗口尺寸（包内共享，main 和 AppService 都能用）
+func loadWindowSize() (int, int) {
+	statePath := getDownloadStatePath()
+	data, err := os.ReadFile(statePath)
+	if err != nil {
+		return 0, 0
+	}
+	var state struct {
+		Width  int `json:"window_width"`
+		Height int `json:"window_height"`
+	}
+	if err := json.Unmarshal(data, &state); err != nil {
+		return 0, 0
+	}
+	if state.Width <= 0 || state.Height <= 0 {
+		return 0, 0
+	}
+	return state.Width, state.Height
+}
+
+func (a *AppService) SaveWindowSize(width, height int) error {
+	statePath := getDownloadStatePath()
+	var state map[string]any
+	if data, err := os.ReadFile(statePath); err == nil {
+		json.Unmarshal(data, &state)
+	}
+	if state == nil {
+		state = map[string]any{}
+	}
+	state["window_width"] = width
+	state["window_height"] = height
+	data, err := json.MarshalIndent(state, "", "  ")
+	if err != nil {
+		return fmt.Errorf("序列化状态失败: %w", err)
+	}
+	return os.WriteFile(statePath, data, 0644)
+}
+
+func (a *AppService) LoadWindowSize() (int, int, error) {
+	w, h := loadWindowSize()
+	if w <= 0 || h <= 0 {
+		return 0, 0, fmt.Errorf("无效的窗口尺寸")
+	}
+	return w, h, nil
+}
+
 // ========== 下载目录 ==========
 
 func getDownloadStatePath() string {
@@ -371,6 +496,43 @@ func (a *AppService) SetDownloadDir(dir string) error {
 		state = map[string]any{}
 	}
 	state["download_dir"] = dir
+	data, err := json.MarshalIndent(state, "", "  ")
+	if err != nil {
+		return fmt.Errorf("序列化配置失败: %w", err)
+	}
+	if err := os.WriteFile(statePath, data, 0644); err != nil {
+		return fmt.Errorf("保存配置失败: %w", err)
+	}
+	return nil
+}
+
+// ========== 默认漫画目录 ==========
+
+func (a *AppService) GetDefaultComicDir() string {
+	statePath := getDownloadStatePath()
+	data, err := os.ReadFile(statePath)
+	if err != nil {
+		return ""
+	}
+	var state struct {
+		ComicDir string `json:"comic_dir"`
+	}
+	if err := json.Unmarshal(data, &state); err != nil || state.ComicDir == "" {
+		return ""
+	}
+	return state.ComicDir
+}
+
+func (a *AppService) SetDefaultComicDir(dir string) error {
+	statePath := getDownloadStatePath()
+	var state map[string]any
+	if data, err := os.ReadFile(statePath); err == nil {
+		json.Unmarshal(data, &state)
+	}
+	if state == nil {
+		state = map[string]any{}
+	}
+	state["comic_dir"] = dir
 	data, err := json.MarshalIndent(state, "", "  ")
 	if err != nil {
 		return fmt.Errorf("序列化配置失败: %w", err)

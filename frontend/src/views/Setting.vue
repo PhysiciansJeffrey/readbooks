@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
-import { SelectFolder, AddComic, AddsComic, TagListWithCount, TagUpdate, TagDelete, TagCreate, GetDownloadDir, GetDefaultDownloadDir, SetDownloadDir } from '../../bindings/ReadBooks/appservice'
+import { SelectFolder, AddComic, AddsComic, TagListWithCount, TagUpdate, TagDelete, TagCreate, GetDefaultComicDir, SetDefaultComicDir } from '../../bindings/ReadBooks/appservice'
 
 const router = useRouter()
 
@@ -106,20 +106,16 @@ const toggleEditMode = () => {
   editingTagId.value = null
 }
 
-// const pickFolder = async () => {
-//   try {
-//     if (!selectOnly.value) {
-//       selectOnly.value = !selectOnly.value
-//       paths.value = []
-//     }
-//     let path = await SelectFolder()
-//     if (path && !paths.value.find((item) => item.path === path)) {
-//       paths.value.push({ path, status: 'pending' })
-//     }
-//   } catch (e) {
-//     // 用户取消
-//   }
-// }
+const pickFolder = async () => {
+  try {
+    let path = await SelectFolder()
+    if (path && !paths.value.find((item) => item.path === path)) {
+      paths.value.push({ path, status: 'pending' })
+    }
+  } catch (e) {
+    // 用户取消
+  }
+}
 
 const pickMultiple = async () => {
   try {
@@ -227,9 +223,83 @@ const resetDownloadDir = async () => {
   }
 }
 
+// --- 默认漫画目录 ---
+const defaultComicDir = ref('')
+const editingDir = ref(false)
+const tempDir = ref('')
+const importDirStatus = ref('') // '' | 'loading' | 'done' | 'error'
+const importDirMsg = ref('')
+
+const loadDefaultComicDir = async () => {
+  try {
+    defaultComicDir.value = await GetDefaultComicDir() || ''
+  } catch (e) {
+    console.error('获取默认漫画目录失败:', e)
+  }
+}
+
+const startEditDir = () => {
+  tempDir.value = defaultComicDir.value
+  editingDir.value = true
+  nextTick(() => {
+    const input = document.querySelector('.dir-input')
+    if (input) input.focus()
+  })
+}
+
+const saveDefaultComicDir = async () => {
+  const dir = tempDir.value.trim()
+  if (!dir) return
+  try {
+    await SetDefaultComicDir(dir)
+    defaultComicDir.value = dir
+    editingDir.value = false
+  } catch (e) {
+    console.error('保存默认漫画目录失败:', e)
+  }
+}
+
+const cancelEditDir = () => {
+  editingDir.value = false
+}
+
+const importDefaultDir = async () => {
+  if (!defaultComicDir.value || importDirStatus.value === 'loading') return
+  importDirStatus.value = 'loading'
+  importDirMsg.value = ''
+  try {
+    const res = await AddsComic(defaultComicDir.value)
+    if (res && res.success) {
+      importDirStatus.value = 'done'
+      importDirMsg.value = `导入成功: ${res.added} 个，跳过: ${res.skipped} 个`
+    } else {
+      importDirStatus.value = 'error'
+      importDirMsg.value = res?.error || '导入失败'
+    }
+  } catch (e) {
+    importDirStatus.value = 'error'
+    importDirMsg.value = e.message
+  }
+  setTimeout(() => {
+    importDirStatus.value = ''
+    importDirMsg.value = ''
+  }, 3000)
+}
+
+const pickDefaultDir = async () => {
+  try {
+    const dir = await SelectFolder()
+    if (dir) {
+      tempDir.value = dir
+    }
+  } catch (e) {
+    // 用户取消
+  }
+}
+
 onMounted(() => {
   fetchTags()
-  loadDownloadDir()
+  loadDefaultComicDir()
 })
 </script>
 
@@ -243,9 +313,32 @@ onMounted(() => {
         <h2 class="section-title">漫画管理</h2>
       </div>
 
+      <!-- 默认漫画目录 -->
+      <div class="dir-row">
+        <span class="dir-label">默认路径：</span>
+        <template v-if="editingDir">
+          <input v-model="tempDir" class="dir-input" type="text" placeholder="输入漫画文件夹路径"
+            @keyup.enter="saveDefaultComicDir" @keyup.esc="cancelEditDir" />
+          <button class="dir-btn" @click="pickDefaultDir">选择</button>
+          <button class="dir-btn dir-btn-save" @click="saveDefaultComicDir">保存</button>
+          <button class="dir-btn" @click="cancelEditDir">取消</button>
+        </template>
+        <template v-else>
+          <span class="dir-path" :class="{ 'dir-path-empty': !defaultComicDir }" @click="startEditDir">
+            {{ defaultComicDir || '未设置（点击选择）' }}
+          </span>
+          <button v-if="defaultComicDir" class="dir-btn dir-btn-import" :disabled="importDirStatus === 'loading'"
+            @click="importDefaultDir">
+            {{ importDirStatus === 'loading' ? '导入中...' : '导入' }}
+          </button>
+          <span v-if="importDirMsg" class="dir-import-msg" :class="'dir-import-' + importDirStatus">
+            {{ importDirMsg }}
+          </span>
+        </template>
+      </div>
+
       <div class="setting-actions">
-        <!-- <button class="setting-btn" @click="pickFolder">添加漫画</button> -->
-        <button class="setting-btn" @click="pickMultiple">添加多个漫画</button>
+        <button class="setting-btn" @click="pickMultiple">添加漫画文件夹</button>
       </div>
 
       <div v-if="paths.length" class="path-list">
@@ -767,5 +860,98 @@ onMounted(() => {
 .download-actions {
   display: flex;
   gap: 8px;
+}
+
+/* 默认漫画目录 */
+.dir-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.dir-label {
+  font-size: 14px;
+  color: var(--app-text);
+  white-space: nowrap;
+}
+
+.dir-path {
+  flex: 1;
+  font-size: 13px;
+  color: var(--muted-text);
+  word-break: break-all;
+  line-height: 1.5;
+  text-align: left;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: background-color 0.12s ease;
+}
+
+.dir-path:hover {
+  background: var(--sidebar-bg);
+}
+
+.dir-path-empty {
+  color: var(--muted-text);
+  opacity: 0.6;
+}
+
+.dir-input {
+  flex: 1;
+  padding: 6px 10px;
+  border: 1px solid var(--switch-border);
+  border-radius: 4px;
+  background: var(--sidebar-bg);
+  color: var(--app-text);
+  font-size: 13px;
+  outline: none;
+  min-width: 200px;
+}
+
+.dir-input:focus {
+  border-color: var(--app-text);
+}
+
+.dir-btn {
+  padding: 4px 12px;
+  border: 1px solid var(--switch-border);
+  border-radius: 4px;
+  background: var(--sidebar-bg);
+  color: var(--app-text);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 0.12s ease, background-color 0.12s ease;
+  outline: none;
+}
+
+.dir-btn:hover {
+  border-color: var(--app-text);
+  background: var(--switch-bg);
+}
+
+.dir-btn-save {
+  border-color: var(--app-text);
+}
+
+.dir-btn-import {
+  border-color: var(--app-text);
+  margin-left: auto;
+}
+
+.dir-import-msg {
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.dir-import-done {
+  color: #2ecc71;
+}
+
+.dir-import-error {
+  color: #e74c3c;
 }
 </style>

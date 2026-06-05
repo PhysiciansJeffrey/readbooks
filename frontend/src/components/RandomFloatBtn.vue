@@ -1,8 +1,28 @@
 <script setup>
+import { computed } from 'vue'
+import { useRoute } from 'vue-router'
 import { BookList } from '../../bindings/ReadBooks/appservice'
 import { useRouter } from 'vue-router'
 
+const props = defineProps({
+  pages: {
+    type: Array,
+    default: () => [],
+  },
+})
+
+const route = useRoute()
 const router = useRouter()
+
+const visible = computed(() => {
+  if (!props.pages || props.pages.length === 0) return true
+  return props.pages.some(p => {
+    if (p.endsWith('*')) {
+      return route.name?.toString().startsWith(p.slice(0, -1))
+    }
+    return route.name === p
+  })
+})
 
 const randomRead = async () => {
   try {
@@ -17,7 +37,7 @@ const randomRead = async () => {
 </script>
 
 <template>
-  <button class="random-float-btn" title="随机观看" @click="randomRead">?</button>
+  <button v-if="visible" class="random-float-btn" title="随机观看" @click="randomRead">?</button>
 </template>
 
 <style scoped>

@@ -1,6 +1,9 @@
 package storage
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 type Tag struct {
 	ID        int64  `json:"id"`
@@ -158,6 +161,53 @@ func GetBookTags(bookID int64) ([]*Tag, error) {
 		tags = append(tags, &t)
 	}
 	return tags, nil
+}
+
+// BatchGetBookTags 批量查询多本书的标签（替代 N+1 循环）
+func BatchGetBookTags(bookIDs []int64) (map[int64][]*Tag, error) {
+	if len(bookIDs) == 0 {
+		return map[int64][]*Tag{}, nil
+	}
+
+	placeholders := make([]string, len(bookIDs))
+	args := make([]any, len(bookIDs))
+	for i, id := range bookIDs {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+
+	query := fmt.Sprintf(
+		`SELECT bt.book_id, t.id, t.name, t.color, t.sort_order
+		 FROM tags t
+		 INNER JOIN book_tags bt ON bt.tag_id = t.id
+		 WHERE bt.book_id IN (%s)
+		 ORDER BY t.sort_order, t.id`,
+		strings.Join(placeholders, ","),
+	)
+
+	rows, err := DB.Query(query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("批量查询书籍标签失败: %w", err)
+	}
+	defer rows.Close()
+
+	result := make(map[int64][]*Tag, len(bookIDs))
+	for rows.Next() {
+		var bookID int64
+		var t Tag
+		if err := rows.Scan(&bookID, &t.ID, &t.Name, &t.Color, &t.SortOrder); err != nil {
+			return nil, fmt.Errorf("扫描标签数据失败: %w", err)
+		}
+		result[bookID] = append(result[bookID], &t)
+	}
+
+	for _, id := range bookIDs {
+		if _, ok := result[id]; !ok {
+			result[id] = []*Tag{}
+		}
+	}
+
+	return result, nil
 }
 
 // GetBooksByTag 返回指定标签下的所有书籍

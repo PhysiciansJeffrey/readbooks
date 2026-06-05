@@ -4,6 +4,7 @@ import { ref, provide, nextTick } from 'vue'
 import { RouterView } from 'vue-router'
 import Sidebar from '@/components/Sidebar.vue'
 import Searchbar from '@/components/Searchbar.vue'
+import RandomFloatBtn from '@/components/RandomFloatBtn.vue'
 
 const keepAliveIncludes = ref(['Home', 'Search'])
 
@@ -40,6 +41,7 @@ const onTopLeave = () => {
       <component :is="Component" />
     </KeepAlive>
   </RouterView>
+  <RandomFloatBtn :pages="[]" />
 </template>
 
 <style scoped>

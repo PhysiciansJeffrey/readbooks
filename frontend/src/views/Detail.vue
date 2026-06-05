@@ -2,7 +2,6 @@
 import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { BookGet, BookGetImage, BookUpdateProgress } from '../../bindings/ReadBooks/appservice'
-import RandomFloatBtn from '@/components/RandomFloatBtn.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -349,7 +348,6 @@ watch(() => route.params.id, loadBook)
         <button class="float-btn" title="切换观看模式" @click="toggleViewMode">
           {{ viewMode === 'horizontal' ? '竖' : '横' }}
         </button>
-        <RandomFloatBtn />
       </div>
     </template>
   </div>

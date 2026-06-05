@@ -3,7 +3,6 @@ import { ref, onMounted, computed } from 'vue'
 import { BookList } from '../../bindings/ReadBooks/appservice'
 import ComicGrid from '@/components/ComicGrid.vue'
 import Pagination from '@/components/Pagination.vue'
-import RandomFloatBtn from '@/components/RandomFloatBtn.vue'
 
 const PAGE_SIZE_KEY = 'readbooks-page-size'
 const DEFAULT_PAGE_SIZE = 10
@@ -122,7 +121,7 @@ onMounted(() => {
 
     <!-- 漫画网格 + 翻页 -->
     <template v-else>
-      <ComicGrid :comics="comics" />
+      <ComicGrid :comics="comics" @refresh="fetchComics(currentPage)" />
       <Pagination
         :current-page="currentPage"
         :total-pages="totalPages"
@@ -135,7 +134,6 @@ onMounted(() => {
       />
     </template>
   </div>
-  <RandomFloatBtn />
 </template>
 <style scoped>
 .home {

@@ -1,8 +1,7 @@
 <script setup>
 import { ref, inject, onMounted, computed, watch } from 'vue'
 import { useRoute,useRouter } from 'vue-router'
-import { BookGet, BookGetTags, TagCreate, BookSetTags, BookDelete, GetChapters } from '../../bindings/ReadBooks/appservice'
-import RandomFloatBtn from '@/components/RandomFloatBtn.vue'
+import { BookGet, BookGetTags, TagCreate, BookSetTags, BookDelete, BookDeleteWithFiles, GetChapters } from '../../bindings/ReadBooks/appservice'
 
 const refreshHome = inject('refreshHome')
 const route = useRoute()
@@ -114,27 +113,30 @@ watch(() => route.params.id, (newId) => {
 })
 
 // --- 删除漫画 ---
-const showDeleteConfirm = ref(false)
+const deleteMode = ref(null) // null | 'record' | 'files'
 
-const requestDelete = () => {
-  showDeleteConfirm.value = true
+const requestDelete = (mode) => {
+  deleteMode.value = mode
 }
 
 const cancelDelete = () => {
-  showDeleteConfirm.value = false
+  deleteMode.value = null
 }
 
 const confirmDelete = async () => {
-  if (!book.value) return
+  if (!book.value || !deleteMode.value) return
   try {
-    await BookDelete(Number(book.value.id))
-    showDeleteConfirm.value = false
-    // window.history.back()
+    if (deleteMode.value === 'files') {
+      await BookDeleteWithFiles(Number(book.value.id))
+    } else {
+      await BookDelete(Number(book.value.id))
+    }
+    deleteMode.value = null
     refreshHome?.()
-    router.push('/')
+    router.back()
   } catch (e) {
     console.error('删除失败:', e)
-    showDeleteConfirm.value = false
+    deleteMode.value = null
   }
 }
 </script>
@@ -194,7 +196,8 @@ const confirmDelete = async () => {
             开始阅读
           </button>
           <button class="resume-btn">收藏</button>
-          <button class="resume-btn resume-btn-danger" @click="requestDelete">删除</button>
+          <button class="resume-btn" @click="requestDelete('record')">仅删记录</button>
+          <button class="resume-btn resume-btn-danger" @click="requestDelete('files')">删除记录+源文件</button>
         </div>
 
         <!-- 章节目录（多章节子漫画） -->
@@ -219,9 +222,10 @@ const confirmDelete = async () => {
     </template>
 
     <!-- 删除确认弹窗 -->
-    <div v-if="showDeleteConfirm" class="dialog-overlay" @click.self="cancelDelete">
+    <div v-if="deleteMode" class="dialog-overlay" @click.self="cancelDelete">
       <div class="dialog-box">
-        <p class="dialog-text">确认删除《{{ book.title }}》？此操作不可恢复。</p>
+        <p class="dialog-text" v-if="deleteMode === 'files'">确认删除《{{ book.title }}》？此操作将同时删除电脑上的源文件夹，不可恢复。</p>
+        <p class="dialog-text" v-else>确认仅删除《{{ book.title }}》的记录？源文件夹将保留在电脑上。</p>
         <div class="dialog-btns">
           <button class="dialog-btn dialog-btn-cancel" @click="cancelDelete">取消</button>
           <button class="dialog-btn dialog-btn-confirm" @click="confirmDelete">确认删除</button>
@@ -229,7 +233,6 @@ const confirmDelete = async () => {
       </div>
     </div>
 
-    <RandomFloatBtn />
   </div>
 </template>
 

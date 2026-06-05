@@ -48,6 +48,19 @@ func GetBook(id int64) (*Book, error) {
 	return &b, nil
 }
 
+func ExistsByJMID(jmid int64, title string) bool {
+	var count int
+	err := DB.QueryRow(`SELECT COUNT(*) FROM books WHERE jmid = ?`, jmid).Scan(&count)
+	if err == nil && count > 0 {
+		return true
+	}
+	if title == "" {
+		return false
+	}
+	err = DB.QueryRow(`SELECT COUNT(*) FROM books WHERE title = ?`, title).Scan(&count)
+	return err == nil && count > 0
+}
+
 func GetBookByTitle(title string) (*Book, error) {
 	var b Book
 	err := DB.QueryRow(
@@ -78,7 +91,7 @@ func ListBooks(page, pageSize int) ([]*Book, int, error) {
 		`SELECT id, title, author, description, parent, sort_order, file_path, total_pages, current_page, cover_url, jmid, status, created_at, updated_at
 		 FROM books
 		 where parent <= 1
-		 ORDER BY sort_order,updated_at DESC LIMIT ? OFFSET ?`,
+		 ORDER BY sort_order,updated_at asc LIMIT ? OFFSET ?`,
 		pageSize, (page-1)*pageSize,
 	)
 	if err != nil {
@@ -95,11 +108,17 @@ func ListBooks(page, pageSize int) ([]*Book, int, error) {
 		books = append(books, &b)
 	}
 
-	// 补充每本书的 tags
-	for _, book := range books {
-		tags, err := GetBookTags(book.ID)
+	// 批量补充 tags（避免 N+1）
+	if len(books) > 0 {
+		ids := make([]int64, len(books))
+		for i, b := range books {
+			ids[i] = b.ID
+		}
+		tagMap, err := BatchGetBookTags(ids)
 		if err == nil {
-			book.Tags = tags
+			for _, b := range books {
+				b.Tags = tagMap[b.ID]
+			}
 		}
 	}
 
@@ -125,7 +144,7 @@ func SearchBooks(keyword string, page, pageSize int) ([]*Book, int, error) {
 		   OR b.author LIKE ?
 		   OR b.jmid = ?
 		   OR t.name LIKE ?) and parent <= 1
-		ORDER BY b.updated_at DESC
+		ORDER BY b.updated_at asc
 		LIMIT ? OFFSET ?`
 
 	rows, err := DB.Query(query, like, like, keyword, like, pageSize, (page-1)*pageSize)
@@ -143,11 +162,17 @@ func SearchBooks(keyword string, page, pageSize int) ([]*Book, int, error) {
 		books = append(books, &b)
 	}
 
-	// 补充每本书的 tags
-	for _, book := range books {
-		tags, err := GetBookTags(book.ID)
+	// 批量补充 tags（避免 N+1）
+	if len(books) > 0 {
+		ids := make([]int64, len(books))
+		for i, b := range books {
+			ids[i] = b.ID
+		}
+		tagMap, err := BatchGetBookTags(ids)
 		if err == nil {
-			book.Tags = tags
+			for _, b := range books {
+				b.Tags = tagMap[b.ID]
+			}
 		}
 	}
 

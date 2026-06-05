@@ -144,9 +144,6 @@ func comicIsJm(s string) map[string]any {
 		return meta.ChapterInfos[i].Order < meta.ChapterInfos[j].Order
 	})
 
-	// 加载已有书籍用于重复检查
-	existing, _, _ := storage.ListBooks(1, 10000)
-
 	coverURL := filepath.Join(s, "cover.jpg")
 	added := 0
 	skipped := 0
@@ -156,12 +153,9 @@ func comicIsJm(s string) map[string]any {
 		ci := meta.ChapterInfos[0]
 		chapterPath := filepath.Join(s, ci.ChapterTitle)
 
-		// 重复检查
-		for _, b := range existing {
-			if b.FilePath == chapterPath {
-				result["error"] = fmt.Sprintf("路径已存在 (ID:%d)", b.ID)
-				return result
-			}
+		if storage.ExistsByJMID(ci.ChapterID.Int64(), meta.Name) {
+			result["error"] = "漫画已存在"
+			return result
 		}
 
 		images, err := scanImages(chapterPath)
@@ -191,57 +185,49 @@ func comicIsJm(s string) map[string]any {
 			return result
 		}
 
-		// 绑定标签
 		bindTags(id, meta.Tags)
 		added = 1
 	} else {
-	// 多章节
-	parentID := meta.ChapterInfos[0].ChapterID.Int64()
+		// 多章节
+		parentID := meta.ChapterInfos[0].ChapterID.Int64()
 
-	for _, ci := range meta.ChapterInfos {
-		chapterPath := filepath.Join(s, ci.ChapterTitle)
+		for _, ci := range meta.ChapterInfos {
+			chapterPath := filepath.Join(s, ci.ChapterTitle)
 
-		// 重复检查
-		dup := false
-		for _, b := range existing {
-			if b.FilePath == chapterPath {
-				skipped++
-				dup = true
-				break
+			title := meta.Name
+			if ci.Order != 1 {
+				title = meta.Name + ci.ChapterTitle
 			}
-		}
-		if dup {
-			continue
-		}
+			if storage.ExistsByJMID(ci.ChapterID.Int64(), title) {
+				skipped++
+				continue
+			}
 
-		images, err := scanImages(chapterPath)
-		if err != nil || len(images) == 0 {
-			skipped++
-			continue
-		}
+			images, err := scanImages(chapterPath)
+			if err != nil || len(images) == 0 {
+				skipped++
+				continue
+			}
 
-		title := meta.Name
-		parentVal := 0
-		if ci.Order == 1 {
-			// 第一本作为父级
-			parentVal = 1
-		} else {
-			title = meta.Name + ci.ChapterTitle
-			parentVal = int(parentID)
-		}
+			parentVal := 0
+			if ci.Order == 1 {
+				parentVal = 1
+			} else {
+				parentVal = int(parentID)
+			}
 
-		id, err := storage.CreateBook(&storage.Book{
-			Title:       title,
-			Author:      string(meta.Author),
-			Description: meta.Description,
-			Parent:      parentVal,
-			SortOrder:   ci.Order,
-			FilePath:    chapterPath,
-			TotalPages:  len(images),
-			CoverURL:    coverURL,
-			JMID:        ci.ChapterID.Int64(),
-			Status:      "未读",
-		})
+			id, err := storage.CreateBook(&storage.Book{
+				Title:       title,
+				Author:      string(meta.Author),
+				Description: meta.Description,
+				Parent:      parentVal,
+				SortOrder:   ci.Order,
+				FilePath:    chapterPath,
+				TotalPages:  len(images),
+				CoverURL:    coverURL,
+				JMID:        ci.ChapterID.Int64(),
+				Status:      "未读",
+			})
 			if err != nil {
 				skipped++
 				continue

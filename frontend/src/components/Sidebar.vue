@@ -2,18 +2,40 @@
 import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { Window } from '@wailsio/runtime'
+import { SaveWindowSize, LoadWindowSize } from '../../bindings/ReadBooks/appservice'
 
 const router = useRouter()
 const refreshHome = inject('refreshHome')
 
 const THEME_STORAGE_KEY = 'readbooks-theme'
 const SIDE_STORAGE_KEY = 'readbooks-sidebar-side'
-const SIZE_STORAGE_KEY = 'readbooks-window-size'
 
 const isDark = ref(false)
 const isOpen = ref(false)
 const isRightSide = ref(false)
 const isBorderlessFullscreen = ref(false)
+
+// --- 窗口尺寸 ---
+const sizePresets = [
+  { label: '1280×720', w: 1280, h: 720 },
+  { label: '1600×900', w: 1600, h: 900 },
+]
+const customW = ref(1280)
+const customH = ref(720)
+
+const applySize = async (w, h) => {
+  try {
+    await Window.SetSize(w, h)
+  } catch (e) {
+    console.error('设置窗口尺寸失败', e)
+  }
+}
+
+const applyCustomSize = () => {
+  const w = Math.max(400, Math.min(3840, customW.value | 0))
+  const h = Math.max(300, Math.min(2160, customH.value | 0))
+  applySize(w, h)
+}
 
 const themeLabel = computed(() => (isDark.value ? '黑色背景' : '白色背景'))
 const sideLabel = computed(() => (isRightSide.value ? '右侧' : '左侧'))
@@ -56,15 +78,12 @@ const exitBorderlessFullscreen = async () => {
     await Window.SetFrameless(false)
 
     // 退出全屏后恢复之前的窗口尺寸
-    const saved = localStorage.getItem(SIZE_STORAGE_KEY)
-    if (saved) {
-      try {
-        const size = JSON.parse(saved)
-        if (size && size.width > 0 && size.height > 0) {
-          await Window.SetSize(size.width, size.height)
-        }
-      } catch {}
-    }
+    try {
+      const [w, h] = await LoadWindowSize()
+      if (w > 0 && h > 0) {
+        await Window.SetSize(w, h)
+      }
+    } catch {}
 
     isBorderlessFullscreen.value = false
     return true
@@ -118,7 +137,7 @@ const saveWindowSize = async () => {
 
     const size = await Window.Size()
     if (size && size.width > 0 && size.height > 0) {
-      localStorage.setItem(SIZE_STORAGE_KEY, JSON.stringify(size))
+      await SaveWindowSize(size.width, size.height)
     }
   } catch (error) {
     console.error('保存窗口尺寸失败', error)
@@ -127,21 +146,7 @@ const saveWindowSize = async () => {
 
 const handleResize = () => {
   clearTimeout(resizeTimer)
-  resizeTimer = setTimeout(saveWindowSize, 300)
-}
-
-const restoreWindowSize = async () => {
-  try {
-    const saved = localStorage.getItem(SIZE_STORAGE_KEY)
-    if (!saved) return
-
-    const size = JSON.parse(saved)
-    if (size && size.width > 0 && size.height > 0) {
-      await Window.SetSize(size.width, size.height)
-    }
-  } catch (error) {
-    console.error('恢复窗口尺寸失败', error)
-  }
+  resizeTimer = setTimeout(saveWindowSize, 500)
 }
 
 const applyTheme = () => {
@@ -167,8 +172,6 @@ onMounted(() => {
 
   window.addEventListener('keydown', handleKeydown)
 
-  // 恢复上次的窗口尺寸
-  restoreWindowSize()
   // 监听窗口尺寸变化自动保存
   window.addEventListener('resize', handleResize)
 })
@@ -251,6 +254,26 @@ watch(isDark, applyTheme)
             >
               <span class="fullscreen-icon"></span>
             </button>
+          </div>
+
+          <!-- 窗口尺寸 -->
+          <div class="size-section">
+            <p class="size-title">窗口尺寸</p>
+            <div class="size-presets">
+              <button
+                v-for="preset in sizePresets"
+                :key="preset.label"
+                class="size-preset-btn"
+                type="button"
+                @click="applySize(preset.w, preset.h)"
+              >{{ preset.label }}</button>
+            </div>
+            <div class="size-custom">
+              <input v-model.number="customW" class="size-input" type="number" min="400" max="3840" />
+              <span class="size-sep">×</span>
+              <input v-model.number="customH" class="size-input" type="number" min="300" max="2160" />
+              <button class="size-apply-btn" type="button" @click="applyCustomSize">应用</button>
+            </div>
           </div>
         </section>
         <router-link to="/setting" class="sidebar-setting-btn" @click="closeSidebar">设置</router-link>
@@ -682,5 +705,85 @@ watch(isDark, applyTheme)
   background: var(--app-bg);
   color: var(--app-text);
   transition: background-color 0.18s ease, color 0.18s ease;
+}
+
+/* 窗口尺寸 */
+.size-section {
+  padding: 10px 0 4px;
+  border-top: 1px solid var(--sidebar-border);
+}
+
+.size-title {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted-text);
+}
+
+.size-presets {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.size-preset-btn {
+  flex: 1;
+  padding: 6px 0;
+  border: 1px solid var(--switch-border);
+  border-radius: 6px;
+  background: var(--sidebar-bg);
+  color: var(--app-text);
+  font-size: 13px;
+  cursor: pointer;
+  outline: none;
+}
+
+.size-preset-btn:hover {
+  border-color: var(--app-text);
+  background: var(--switch-bg);
+}
+
+.size-custom {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.size-input {
+  width: 60px;
+  padding: 4px 6px;
+  border: 1px solid var(--switch-border);
+  border-radius: 4px;
+  background: var(--sidebar-bg);
+  color: var(--app-text);
+  font-size: 13px;
+  outline: none;
+  text-align: center;
+}
+
+.size-input:focus {
+  border-color: var(--app-text);
+}
+
+.size-sep {
+  color: var(--muted-text);
+  font-size: 13px;
+}
+
+.size-apply-btn {
+  margin-left: auto;
+  padding: 4px 12px;
+  border: 1px solid var(--switch-border);
+  border-radius: 4px;
+  background: var(--sidebar-bg);
+  color: var(--app-text);
+  font-size: 13px;
+  cursor: pointer;
+  outline: none;
+}
+
+.size-apply-btn:hover {
+  border-color: var(--app-text);
+  background: var(--switch-bg);
 }
 </style>

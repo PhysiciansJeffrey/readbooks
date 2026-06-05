@@ -14,21 +14,26 @@ const router=createRouter({
     routes:[
         {
             path:'/',
+            name:'Home',
             component:Home
         },
         {
             path: '/resume/:id',
+            name:'Resume',
             component: Resume
         },{
             path: '/detail/:id',
+            name:'Detail',
             component: Detail
         },
         {
             path: '/search/:key',
+            name:'Search',
             component: Search
         },
         {
             path: '/setting',
+            name:'Setting',
             component: Setting
         }
     ]
