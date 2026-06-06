@@ -281,8 +281,12 @@ watch(isDark, applyTheme)
 
 .sidebar-toggle-zone.is-right {
   left: auto;
-  right: 0;
+  right: -25px;
   justify-content: flex-end;
+}
+
+.sidebar-toggle-zone.is-right:hover {
+  transform: translateX(-50%);
 }
 
 .sidebar-toggle-zone.is-fullscreen {
@@ -387,7 +391,9 @@ watch(isDark, applyTheme)
   border-right: 0;
   border-left: 1px solid var(--sidebar-border);
   box-shadow: -16px 0 40px rgba(0, 0, 0, 0.24);
+
 }
+
 
 /* 左侧滑入动画 */
 .sidebar-fade-left-enter-active,
