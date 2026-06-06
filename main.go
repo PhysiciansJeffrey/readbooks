@@ -20,7 +20,7 @@ import (
 var (
 	thumbCache sync.Map // path → []byte
 	thumbMu    sync.Mutex
-	thumbMax   = 20 // cache at most 20 thumbnails
+	thumbMax   = 40 // cache at most 40 thumbnails
 )
 
 func serveThumbnail(w http.ResponseWriter, r *http.Request, path string, cover bool) {
@@ -121,16 +121,16 @@ func main() {
 			Handler: application.AssetFileServerFS(assets),
 			Middleware: func(next http.Handler) http.Handler {
 				return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if strings.HasPrefix(r.URL.Path, "/api/image") {
-					path := r.URL.Query().Get("p")
-					if path == "" {
-						http.Error(w, "missing path", 400)
+					if strings.HasPrefix(r.URL.Path, "/api/image") {
+						path := r.URL.Query().Get("p")
+						if path == "" {
+							http.Error(w, "missing path", 400)
+							return
+						}
+						cover := r.URL.Query().Get("cover") == "1"
+						serveThumbnail(w, r, path, cover)
 						return
 					}
-					cover := r.URL.Query().Get("cover") == "1"
-					serveThumbnail(w, r, path, cover)
-					return
-				}
 					next.ServeHTTP(w, r)
 				})
 			},
