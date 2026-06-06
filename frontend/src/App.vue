@@ -49,7 +49,7 @@ const onTopLeave = () => {
 .top-hover-zone {
   position: fixed;
   top: 0;
-  height: 60px;
+  height: 70px;
   z-index: 9;
   width: 70%;
 }

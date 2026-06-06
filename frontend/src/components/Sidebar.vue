@@ -263,13 +263,20 @@ watch(isDark, applyTheme)
 .sidebar-toggle-zone {
   position: fixed;
   top: 24px;
-  left: 0;
+  left: -25px;
   z-index: 20;
   display: flex;
   width: 44px;
   height: 44px;
   align-items: flex-start;
   justify-content: flex-start;
+  transition: transform 0.2s ease;
+  transform: translateX(0);
+}
+
+.sidebar-toggle-zone:hover {
+  transition: transform 0.2s ease;
+  transform: translateX(50%);
 }
 
 .sidebar-toggle-zone.is-right {
@@ -701,9 +708,9 @@ watch(isDark, applyTheme)
 }
 
 .size-presets {
-      display: flex;
-    gap: 8px;
-    margin: 10px;
+  display: flex;
+  gap: 8px;
+  margin: 10px;
 }
 
 .size-preset-btn {
@@ -725,10 +732,10 @@ watch(isDark, applyTheme)
 }
 
 .size-custom {
- display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
 }
 
 .size-input {
@@ -753,7 +760,7 @@ watch(isDark, applyTheme)
 }
 
 .size-apply-btn {
-  margin:5px auto;
+  margin: 5px auto;
   padding: 4px 12px;
   border: 1px solid var(--switch-border);
   border-radius: 4px;
