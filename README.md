@@ -1,6 +1,7 @@
 # ReadBooks
 
 本地漫画阅读桌面应用。
+大部分代码使用AI生成。
 
 ## 技术栈
 
@@ -67,4 +68,3 @@ GET /api/image?cover=1&p={filePath}
 |---|---|
 | github.com/wailsapp/wails/v3 | 桌面应用框架 |
 | modernc.org/sqlite | SQLite 驱动（纯 Go） |
-| github.com/sqweek/dialog | 系统文件夹选择对话框 |

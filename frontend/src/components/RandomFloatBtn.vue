@@ -58,7 +58,7 @@ const randomRead = async () => {
   align-items: center;
   justify-content: center;
   outline: none;
-  z-index: 100;
+  z-index: 11;
   transition: background-color 0.12s ease, border-color 0.12s ease;
 }
 

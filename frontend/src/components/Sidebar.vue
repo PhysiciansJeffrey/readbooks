@@ -83,7 +83,7 @@ const exitBorderlessFullscreen = async () => {
       if (w > 0 && h > 0) {
         await Window.SetSize(w, h)
       }
-    } catch {}
+    } catch { }
 
     isBorderlessFullscreen.value = false
     return true
@@ -186,18 +186,9 @@ watch(isDark, applyTheme)
 </script>
 
 <template>
-  <div
-    v-show="!isOpen"
-    class="sidebar-toggle-zone"
-    :class="{ 'is-fullscreen': isBorderlessFullscreen, 'is-right': isRightSide }"
-  >
-    <button
-      class="sidebar-toggle"
-      type="button"
-      aria-label="展开侧边栏"
-      :aria-expanded="isOpen"
-      @click="openSidebar"
-    >
+  <div v-show="!isOpen" class="sidebar-toggle-zone"
+    :class="{ 'is-fullscreen': isBorderlessFullscreen, 'is-right': isRightSide }">
+    <button class="sidebar-toggle" type="button" aria-label="展开侧边栏" :aria-expanded="isOpen" @click="openSidebar">
       <span></span>
       <span></span>
       <span></span>
@@ -229,13 +220,8 @@ watch(isDark, applyTheme)
               <p class="setting-value">{{ sideLabel }}</p>
             </div>
 
-            <button
-              class="side-toggle"
-              type="button"
-              :aria-pressed="isRightSide"
-              aria-label="切换侧边栏左右位置"
-              @click="isRightSide = !isRightSide"
-            >
+            <button class="side-toggle" type="button" :aria-pressed="isRightSide" aria-label="切换侧边栏左右位置"
+              @click="isRightSide = !isRightSide">
               <span class="side-icon" :class="{ 'is-right': isRightSide }"></span>
             </button>
           </div>
@@ -246,12 +232,8 @@ watch(isDark, applyTheme)
               <p class="setting-value">{{ fullscreenLabel }}</p>
             </div>
 
-            <button
-              class="window-action"
-              type="button"
-              :aria-pressed="isBorderlessFullscreen"
-              @click="toggleBorderlessFullscreen"
-            >
+            <button class="window-action" type="button" :aria-pressed="isBorderlessFullscreen"
+              @click="toggleBorderlessFullscreen">
               <span class="fullscreen-icon"></span>
             </button>
           </div>
@@ -260,20 +242,15 @@ watch(isDark, applyTheme)
           <div class="size-section">
             <p class="size-title">窗口尺寸</p>
             <div class="size-presets">
-              <button
-                v-for="preset in sizePresets"
-                :key="preset.label"
-                class="size-preset-btn"
-                type="button"
-                @click="applySize(preset.w, preset.h)"
-              >{{ preset.label }}</button>
+              <button v-for="preset in sizePresets" :key="preset.label" class="size-preset-btn" type="button"
+                @click="applySize(preset.w, preset.h)">{{ preset.label }}</button>
             </div>
             <div class="size-custom">
               <input v-model.number="customW" class="size-input" type="number" min="400" max="3840" />
               <span class="size-sep">×</span>
               <input v-model.number="customH" class="size-input" type="number" min="300" max="2160" />
-              <button class="size-apply-btn" type="button" @click="applyCustomSize">应用</button>
             </div>
+            <button class="size-apply-btn" type="button" @click="applyCustomSize">应用</button>
           </div>
         </section>
         <router-link to="/setting" class="sidebar-setting-btn" @click="closeSidebar">设置</router-link>
@@ -537,11 +514,11 @@ watch(isDark, applyTheme)
   transition: transform 0.18s ease, background-color 0.18s ease;
 }
 
-.theme-switch input:checked + .switch-track .switch-thumb {
+.theme-switch input:checked+.switch-track .switch-thumb {
   transform: translateX(20px);
 }
 
-.theme-switch input:focus-visible + .switch-track {
+.theme-switch input:focus-visible+.switch-track {
   outline: 2px solid var(--focus-ring);
   outline-offset: 3px;
 }
@@ -709,21 +686,24 @@ watch(isDark, applyTheme)
 
 /* 窗口尺寸 */
 .size-section {
-  padding: 10px 0 4px;
-  border-top: 1px solid var(--sidebar-border);
+  border: 1px solid #939393;
+  border-radius: 6px;
+  display: grid;
 }
 
 .size-title {
-  margin: 0 0 8px;
+  padding: 5px 0;
   font-size: 13px;
   font-weight: 600;
-  color: var(--muted-text);
+  color: var(--app-text);
+  background: gray;
+  text-align: center;
 }
 
 .size-presets {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 10px;
+      display: flex;
+    gap: 8px;
+    margin: 10px;
 }
 
 .size-preset-btn {
@@ -731,8 +711,8 @@ watch(isDark, applyTheme)
   padding: 6px 0;
   border: 1px solid var(--switch-border);
   border-radius: 6px;
-  background: var(--sidebar-bg);
-  color: var(--app-text);
+  background: var(--focus-ring);
+  color: var(--app-bg);
   font-size: 13px;
   cursor: pointer;
   outline: none;
@@ -741,12 +721,14 @@ watch(isDark, applyTheme)
 .size-preset-btn:hover {
   border-color: var(--app-text);
   background: var(--switch-bg);
+  color: var(--app-text);
 }
 
 .size-custom {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+ display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
 }
 
 .size-input {
@@ -771,7 +753,7 @@ watch(isDark, applyTheme)
 }
 
 .size-apply-btn {
-  margin-left: auto;
+  margin:5px auto;
   padding: 4px 12px;
   border: 1px solid var(--switch-border);
   border-radius: 4px;

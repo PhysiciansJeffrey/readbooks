@@ -63,28 +63,25 @@ const confirmDelete = async () => {
 
 <template>
   <!-- 删除操作栏 -->
-  <div v-if="deleteMode" class="delete-bar">
-    <span class="delete-bar-info">已选 {{ selectedIds.size }} 项</span>
-    <div class="delete-bar-btns">
-      <button class="delete-btn delete-btn-confirm" :disabled="selectedIds.size === 0 || deleting" @click="confirmDelete">
-        {{ deleting ? '删除中...' : '确认删除' }}
+  <div class="delete-box">
+      <div v-if="deleteMode" class="delete-bar">
+        <span class="delete-bar-info">已选 {{ selectedIds.size }} 项 (包括源文件一起删除)</span>
+        <div class="delete-bar-btns">
+          <button class="delete-btn delete-btn-confirm" :disabled="selectedIds.size === 0 || deleting"
+            @click="confirmDelete">
+            {{ deleting ? '删除中...' : '确认删除' }}
+          </button>
+          <!-- <button class="delete-btn delete-btn-cancel" @click="toggleDeleteMode">取消</button> -->
+        </div>
+      </div>
+      <button class="delete-mode-btn" @click="toggleDeleteMode">
+        {{ deleteMode ? '退出删除' : '批量删除' }}
       </button>
-      <button class="delete-btn delete-btn-cancel" @click="toggleDeleteMode">取消</button>
-    </div>
   </div>
 
-  <button class="delete-mode-btn" @click="toggleDeleteMode">
-    {{ deleteMode ? '退出删除' : '删除' }}
-  </button>
-
   <div class="comic-grid">
-    <div
-      v-for="comic in comics"
-      :key="comic.id"
-      class="comic-card"
-      :class="{ 'comic-card-selected': selectedIds.has(comic.id) }"
-      @click="deleteMode && toggleSelect(comic.id)"
-    >
+    <div v-for="comic in comics" :key="comic.id" class="comic-card"
+      :class="{ 'comic-card-selected': selectedIds.has(comic.id) }" @click="deleteMode && toggleSelect(comic.id)">
       <div v-if="deleteMode" class="comic-select">
         <input type="checkbox" :checked="selectedIds.has(comic.id)" @click.stop="toggleSelect(comic.id)" />
       </div>
@@ -99,13 +96,7 @@ const confirmDelete = async () => {
           <span class="comic-pages">{{ comic.total_pages }} 页</span>
         </div>
       </div>
-      <router-link
-        v-else
-        class="comic-card-main"
-        :to="`/resume/${comic.id}`"
-        :aria-label="comic.title"
-        @click.stop
-      >
+      <router-link v-else class="comic-card-main" :to="`/resume/${comic.id}`" :aria-label="comic.title" @click.stop>
         <div class="comic-cover">
           <img :src="loadCover(comic.cover_url)" :alt="comic.title" loading="lazy" />
           <div class="comic-cover-overlay"></div>
@@ -117,14 +108,94 @@ const confirmDelete = async () => {
         </div>
       </router-link>
       <div class="comic-tags" v-if="!deleteMode && comic.tags && comic.tags.length">
-        <button v-for="tag in comic.tags" :key="tag.id" class="comic-tag"
-          @click.stop="goToSearch(tag.name)">{{ tag.name }}</button>
+        <button v-for="tag in comic.tags" :key="tag.id" class="comic-tag" @click.stop="goToSearch(tag.name)">{{ tag.name
+          }}</button>
       </div>
     </div>
   </div>
 </template>
 
 <style scoped>
+.delete-box {
+  position: fixed;
+    bottom: 30px;
+    right: 75px;
+    z-index: 11;
+}
+
+.delete-mode-btn {
+  float: right;
+  margin-top: 10px;
+  padding: 6px 16px;
+  border: 1px solid var(--switch-border);
+  border-radius: 6px;
+  background: var(--sidebar-bg);
+  color: var(--app-text);
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color 0.12s ease, background-color 0.12s ease;
+  outline: none;
+}
+
+.delete-mode-btn:hover {
+  /* border-color: #e74c3c; */
+  background-color: #e74c3c;
+  color: var(--app-text);
+}
+
+.delete-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border: 1px solid #e74c3c;
+  border-radius: 6px;
+  background: rgba(231, 76, 60, 1);
+  gap: 10px;
+}
+
+.delete-bar-info {
+  font-size: 13px;
+  color: var(--app-text);
+}
+
+.delete-bar-btns {
+  display: flex;
+  gap: 8px;
+}
+
+.delete-btn {
+  padding: 4px 14px;
+  border: 1px solid var(--switch-border);
+  border-radius: 4px;
+  background: var(--sidebar-bg);
+  color: var(--app-text);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 0.12s ease, background-color 0.12s ease;
+  outline: none;
+}
+
+.delete-btn:hover:not(:disabled) {
+  border-color: var(--app-text);
+}
+
+.delete-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.delete-btn-confirm {
+  border-color: #e74c3c;
+  color: #e74c3c;
+}
+
+.delete-btn-confirm:hover:not(:disabled) {
+  background: #e74c3c;
+  color: #fff;
+}
+
 .comic-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
@@ -132,10 +203,10 @@ const confirmDelete = async () => {
 }
 
 .comic-card {
+  position: relative;
   display: flex;
   flex-direction: column;
   border-radius: 8px;
-  overflow: hidden;
   background: var(--sidebar-bg);
   transition: transform 0.15s ease, box-shadow 0.15s ease;
   outline: none;
@@ -234,8 +305,6 @@ const confirmDelete = async () => {
   border-radius: 3px;
 }
 
-
-
 .comic-tag {
   display: inline-block;
   padding: 1px 6px;
@@ -250,81 +319,11 @@ const confirmDelete = async () => {
   font-family: inherit;
 }
 
-/* 删除模式 */
-.delete-mode-btn {
-  margin-bottom: 16px;
-  padding: 6px 16px;
-  border: 1px solid var(--switch-border);
-  border-radius: 6px;
-  background: var(--sidebar-bg);
-  color: var(--app-text);
-  font-size: 13px;
-  cursor: pointer;
-  transition: border-color 0.12s ease, background-color 0.12s ease;
-  outline: none;
-}
 
-.delete-mode-btn:hover {
-  border-color: #e74c3c;
-  color: #e74c3c;
-}
-
-.delete-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 12px;
-  padding: 10px 14px;
-  border: 1px solid #e74c3c;
-  border-radius: 6px;
-  background: rgba(231, 76, 60, 0.08);
-}
-
-.delete-bar-info {
-  font-size: 13px;
-  color: var(--app-text);
-}
-
-.delete-bar-btns {
-  display: flex;
-  gap: 8px;
-}
-
-.delete-btn {
-  padding: 4px 14px;
-  border: 1px solid var(--switch-border);
-  border-radius: 4px;
-  background: var(--sidebar-bg);
-  color: var(--app-text);
-  font-size: 12px;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: border-color 0.12s ease, background-color 0.12s ease;
-  outline: none;
-}
-
-.delete-btn:hover:not(:disabled) {
-  border-color: var(--app-text);
-}
-
-.delete-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.delete-btn-confirm {
-  border-color: #e74c3c;
-  color: #e74c3c;
-}
-
-.delete-btn-confirm:hover:not(:disabled) {
-  background: #e74c3c;
-  color: #fff;
-}
 
 /* 卡片选中状态 */
 .comic-card-selected {
-  box-shadow: 0 0 0 2px #e74c3c;
+  box-shadow: 0 0 0 2px #e74c3c !important;
 }
 
 .comic-card-selected .comic-cover-overlay {
@@ -333,9 +332,9 @@ const confirmDelete = async () => {
 
 .comic-select {
   position: absolute;
-  top: 6px;
-  left: 6px;
-  z-index: 2;
+  top: 0;
+  left: 0;
+  z-index: 9;
 }
 
 .comic-select input[type="checkbox"] {

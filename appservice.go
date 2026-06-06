@@ -6,32 +6,167 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
-	"time"
+	"syscall"
 	"unsafe"
 
 	"ReadBooks/internal/storage"
 
-	"github.com/sqweek/dialog"
 	"golang.org/x/sys/windows"
 )
 
 var (
-	user32           = windows.NewLazySystemDLL("user32.dll")
-	findWindow       = user32.NewProc("FindWindowW")
-	setForegroundWnd = user32.NewProc("SetForegroundWindow")
+	user32     = windows.NewLazySystemDLL("user32.dll")
+	findWindow = user32.NewProc("FindWindowW")
+
+	ole32    = windows.NewLazySystemDLL("ole32.dll")
+	coInit   = ole32.NewProc("CoInitializeEx")
+	coCreate = ole32.NewProc("CoCreateInstance")
+
+	shell32                     = windows.NewLazySystemDLL("shell32.dll")
+	sHCreateItemFromParsingName = shell32.NewProc("SHCreateItemFromParsingName")
 )
+
+// COM GUIDs for IFileOpenDialog
+var (
+	clsidFileOpenDialog = windows.GUID{Data1: 0xDC1C5A9C, Data2: 0xE88A, Data3: 0x4DDE, Data4: [8]byte{0xA5, 0xA1, 0x60, 0xF8, 0x2A, 0x20, 0xAE, 0xF7}}
+	iidIFileDialog      = windows.GUID{Data1: 0x42F85136, Data2: 0xDB7E, Data3: 0x439C, Data4: [8]byte{0x85, 0xF1, 0xE4, 0x07, 0x5D, 0x13, 0x5F, 0xC8}}
+	iidIShellItem       = windows.GUID{Data1: 0x43826D1E, Data2: 0xE718, Data3: 0x42EE, Data4: [8]byte{0xBC, 0x55, 0xA1, 0xE2, 0x61, 0xC3, 0x7B, 0xFE}}
+)
+
+const (
+	fosPickFolders   = 0x20
+	sigdnFilesysPath = 0x80058000
+)
+
+// COM VTable helpers
+
+type comIUnknownVtbl struct {
+	QueryInterface uintptr
+	AddRef         uintptr
+	Release        uintptr
+}
+
+type iFileDialogVtbl struct {
+	comIUnknownVtbl
+	// IModalWindow
+	Show uintptr
+	// IFileDialog
+	SetFileTypes     uintptr
+	SetFileTypeIndex uintptr
+	GetFileTypeIndex uintptr
+	Advise           uintptr
+	Unadvise         uintptr
+	SetOptions       uintptr
+	GetOptions       uintptr
+	SetDefaultFolder uintptr
+	SetFolder        uintptr
+	GetFolder        uintptr
+	GetCurrentSel    uintptr
+	SetTitle         uintptr
+	SetOkBtnLabel    uintptr
+	SetFileName      uintptr
+	GetFileName      uintptr
+}
+
+type iShellItemVtbl struct {
+	comIUnknownVtbl
+	BindToHandler  uintptr
+	GetParent      uintptr
+	GetDisplayName uintptr
+	GetAttributes  uintptr
+	Compare        uintptr
+}
+
+type iUnknownCOM struct {
+	vtbl *comIUnknownVtbl
+}
+
+func (p *iUnknownCOM) release() {
+	syscall.SyscallN(p.vtbl.Release, uintptr(unsafe.Pointer(p)), 0, 0)
+}
+
+// selectFolderDialog 使用 Windows IFileOpenDialog（文件对话框样式）选择文件夹
+func selectFolderDialog(title string, startDir string) (string, error) {
+	// 初始化 COM（允许已经初始化的情况）
+	hr, _, _ := coInit.Call(0, windows.COINIT_APARTMENTTHREADED)
+	if hr != 0 && hr != 1 /* S_FALSE */ {
+		return "", fmt.Errorf("COM 初始化失败: hr=%x", hr)
+	}
+	defer windows.CoUninitialize()
+
+	// CoCreateInstance(CLSID_FileOpenDialog, nil, CLSCTX_INPROC_SERVER, IID_IFileDialog, &dialog)
+	var dialog *iUnknownCOM
+	ret, _, _ := coCreate.Call(
+		uintptr(unsafe.Pointer(&clsidFileOpenDialog)),
+		0,
+		1, // CLSCTX_INPROC_SERVER
+		uintptr(unsafe.Pointer(&iidIFileDialog)),
+		uintptr(unsafe.Pointer(&dialog)),
+	)
+	if ret != 0 {
+		return "", fmt.Errorf("创建文件对话框失败: %x", ret)
+	}
+	defer dialog.release()
+
+	fd := (*iFileDialogVtbl)(unsafe.Pointer(dialog.vtbl))
+
+	// SetOptions(FOS_PICKFOLDERS)
+	syscall.SyscallN(fd.SetOptions, uintptr(unsafe.Pointer(dialog)), fosPickFolders, 0)
+
+	// SetTitle
+	if titlePtr, err := windows.UTF16PtrFromString(title); err == nil {
+		syscall.SyscallN(fd.SetTitle, uintptr(unsafe.Pointer(dialog)), uintptr(unsafe.Pointer(titlePtr)), 0)
+	}
+
+	// SetDefaultFolder: 如果提供了 startDir，创建 IShellItem 并设置
+	if startDir != "" {
+		if startDirPtr, err := windows.UTF16PtrFromString(startDir); err == nil {
+			var folderItem *iUnknownCOM
+			hr, _, _ := sHCreateItemFromParsingName.Call(
+				uintptr(unsafe.Pointer(startDirPtr)),
+				0,
+				uintptr(unsafe.Pointer(&iidIShellItem)),
+				uintptr(unsafe.Pointer(&folderItem)),
+			)
+			if hr == 0 && folderItem != nil {
+				syscall.SyscallN(fd.SetDefaultFolder, uintptr(unsafe.Pointer(dialog)), uintptr(unsafe.Pointer(folderItem)), 0)
+				folderItem.release()
+			}
+		}
+	}
+
+	// Show(mainWindowHWND) — 设置父窗口防止被覆盖
+	hwnd := findMainWindow()
+	hr, _, _ = syscall.SyscallN(fd.Show, uintptr(unsafe.Pointer(dialog)), uintptr(hwnd), 0)
+	if hr != 0 {
+		return "", fmt.Errorf("取消选择")
+	}
+
+	// GetFolder(&shellItem)
+	var resultItem *iUnknownCOM
+	hr, _, _ = syscall.SyscallN(fd.GetFolder, uintptr(unsafe.Pointer(dialog)), uintptr(unsafe.Pointer(&resultItem)), 0)
+	if hr != 0 || resultItem == nil {
+		return "", fmt.Errorf("获取选择结果失败: %x", hr)
+	}
+	defer resultItem.release()
+
+	ri := (*iShellItemVtbl)(unsafe.Pointer(resultItem.vtbl))
+
+	// GetDisplayName(SIGDN_FILESYSPATH, &namePtr)
+	var namePtr *uint16
+	hr, _, _ = syscall.SyscallN(ri.GetDisplayName, uintptr(unsafe.Pointer(resultItem)), sigdnFilesysPath, uintptr(unsafe.Pointer(&namePtr)))
+	if hr != 0 || namePtr == nil {
+		return "", fmt.Errorf("获取路径失败: %x", hr)
+	}
+	defer windows.CoTaskMemFree(unsafe.Pointer(namePtr))
+
+	return windows.UTF16PtrToString(namePtr), nil
+}
 
 func findMainWindow() windows.HWND {
 	title, _ := windows.UTF16PtrFromString("ReadBooks")
 	ret, _, _ := findWindow.Call(uintptr(unsafe.Pointer(title)), 0)
 	return windows.HWND(ret)
-}
-
-func bringToFront() {
-	hwnd := findMainWindow()
-	if hwnd != 0 {
-		setForegroundWnd.Call(uintptr(hwnd))
-	}
 }
 
 type AppService struct{}
@@ -395,15 +530,52 @@ func (a *AppService) SetDefaultComicDir(dir string) error {
 	return nil
 }
 
+// getLastFolderPath 从 state.json 读取上次选择的文件夹路径
+func getLastFolderPath() string {
+	statePath := getDownloadStatePath()
+	data, err := os.ReadFile(statePath)
+	if err != nil {
+		return ""
+	}
+	var state struct {
+		LastFolder string `json:"last_folder_path"`
+	}
+	if err := json.Unmarshal(data, &state); err != nil {
+		return ""
+	}
+	return state.LastFolder
+}
+
+// saveLastFolderPath 保存本次选择的文件夹路径到 state.json
+func saveLastFolderPath(dir string) {
+	if dir == "" {
+		return
+	}
+	statePath := getDownloadStatePath()
+	var state map[string]any
+	if data, err := os.ReadFile(statePath); err == nil {
+		json.Unmarshal(data, &state)
+	}
+	if state == nil {
+		state = map[string]any{}
+	}
+	state["last_folder_path"] = dir
+	data, err := json.MarshalIndent(state, "", "  ")
+	if err != nil {
+		return
+	}
+	os.WriteFile(statePath, data, 0644)
+}
+
 func (a *AppService) SelectFolder() (string, error) {
-	bringToFront()
-	time.Sleep(100 * time.Millisecond)
-	path, err := dialog.Directory().Title("选择漫画文件夹").Browse()
+	startDir := getLastFolderPath()
+	path, err := selectFolderDialog("选择漫画文件夹", startDir)
 	if err != nil {
 		return "", err
 	}
 	if path == "" {
 		return "", fmt.Errorf("未选择文件夹")
 	}
+	saveLastFolderPath(path)
 	return path, nil
 }

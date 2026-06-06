@@ -106,23 +106,9 @@ const toggleEditMode = () => {
   editingTagId.value = null
 }
 
-const pickFolder = async () => {
-  try {
-    let path = await SelectFolder()
-    if (path && !paths.value.find((item) => item.path === path)) {
-      paths.value.push({ path, status: 'pending' })
-    }
-  } catch (e) {
-    // 用户取消
-  }
-}
 
 const pickMultiple = async () => {
   try {
-    // if (selectOnly.value) {
-    //   selectOnly.value = !selectOnly.value
-    //   paths.value = []
-    // }
     let path = await SelectFolder()
     if (path && !paths.value.find((item) => item.path === path)) {
       paths.value.push({ path, status: 'pending' })
@@ -136,10 +122,6 @@ const confirmOne = async (index) => {
   let item = paths.value[index]
   item.status = 'loading'
   try {
-    // if (selectOnly.value) {
-    //   res = await AddComic(item.path)
-    // } else {
-    // }
     let res = await AddsComic(item.path)
     if (res && res.success) {
       item.status = 'done'
