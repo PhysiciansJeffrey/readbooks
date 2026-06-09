@@ -20,7 +20,23 @@ type State struct {
 
 func getloadStatePath() string {
 	exePath, _ := os.Executable()
-	return filepath.Join(filepath.Dir(exePath), "state.json")
+	statePath := filepath.Join(filepath.Dir(exePath), "state.json")
+
+	if _, err := os.Stat(statePath); os.IsNotExist(err) {
+		defaultState := State{
+			ComicDir:   "",
+			LastFolder: "",
+			Width:      1200,
+			Height:     800,
+			OpenServer: false,
+			Port:       "8080",
+			LocalHttp:  "",
+		}
+		if data, err := json.MarshalIndent(defaultState, "", "  "); err == nil {
+			os.WriteFile(statePath, data, 0644)
+		}
+	}
+	return statePath
 }
 
 func (a *ApiService) LoadState() *State {

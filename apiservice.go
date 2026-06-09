@@ -154,7 +154,6 @@ func (a *ApiService) startupHttp() {
 func (a *ApiService) ServiceStartup(ctx context.Context, opts application.ServiceOptions) error {
 	// 默认启动 HTTP 服务器
 	if a.LoadState().OpenServer {
-
 		a.SwitchHttpModel(true)
 	}
 	return nil
