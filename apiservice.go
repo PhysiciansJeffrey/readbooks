@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -31,7 +30,6 @@ type ApiService struct {
 func (a *ApiService) SwitchHttpModel(isOpen bool) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	fmt.Println(isOpen)
 	if isOpen {
 		if a.isRunning {
 			return
@@ -48,22 +46,11 @@ func (a *ApiService) SwitchHttpModel(isOpen bool) {
 	setStateHttp(isOpen)
 }
 func (a *ApiService) GetHttpLink() string {
-	port := "11789"
-	if s := a.LoadState(); s != nil && s.Port != "" {
-		port = s.Port
-	}
-	return "http://localhost:" + port
-}
-func getLocalIP() string {
-	// 建立 UDP 连接（不会实际发送数据）
-	conn, err := net.Dial("udp", "8.8.8.8:80")
-	if err != nil {
-		return ""
-	}
-	defer conn.Close()
-
-	localAddr := conn.LocalAddr().(*net.UDPAddr)
-	return localAddr.IP.String()
+	// port := "9245"
+	// if s := a.LoadState(); s != nil && s.Port != "" {
+	// 	port = s.Port
+	// }
+	return "http://localhost:" + a.LoadState().Port
 }
 
 func (a *ApiService) APIHandler() http.Handler {
@@ -111,7 +98,7 @@ func (a *ApiService) createMux() http.Handler {
 // 启动server
 func (a *ApiService) startupHttp() {
 	state := a.LoadState()
-	port := "11789"
+	port := "9245"
 	if state != nil && state.Port != "" {
 		port = state.Port
 	}

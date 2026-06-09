@@ -2,7 +2,7 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 )
@@ -18,6 +18,17 @@ type State struct {
 	LocalHttp  string `json:"local_http"`
 }
 
+func getLocalIP() string {
+	// 建立 UDP 连接（不会实际发送数据）
+	conn, err := net.Dial("udp", "8.8.8.8:80")
+	if err != nil {
+		return ""
+	}
+	defer conn.Close()
+
+	localAddr := conn.LocalAddr().(*net.UDPAddr)
+	return localAddr.IP.String()
+}
 func getloadStatePath() string {
 	exePath, _ := os.Executable()
 	statePath := filepath.Join(filepath.Dir(exePath), "state.json")
@@ -29,7 +40,7 @@ func getloadStatePath() string {
 			Width:      1200,
 			Height:     800,
 			OpenServer: false,
-			Port:       "8080",
+			Port:       "9245",
 			LocalHttp:  "",
 		}
 		if data, err := json.MarshalIndent(defaultState, "", "  "); err == nil {
@@ -45,7 +56,7 @@ func (a *ApiService) LoadState() *State {
 	state := &State{}
 
 	if err := json.Unmarshal(data, &state); err != nil {
-		fmt.Errorf("读取state.json失败:%s", err)
+		// fmt.Errorf("读取state.json失败:%s", err)
 		return nil
 	}
 	return state

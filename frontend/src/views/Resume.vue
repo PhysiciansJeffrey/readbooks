@@ -155,7 +155,7 @@ const confirmDelete = async () => {
     </div>
 
     <!-- 内容 -->
-    <template v-else>
+    <div v-else class="resume-box">
       <div class="resume-cover">
         <img v-if="book.coverSrc" :src="book.coverSrc" :alt="book.title" />
         <div v-else class="resume-cover-placeholder">暂无封面</div>
@@ -192,7 +192,7 @@ const confirmDelete = async () => {
             继续阅读
           </button>
           <button class="resume-btn resume-btn-primary"
-            @click="$router.push(`/detail/${book.id}`)">
+            @click="$router.push(`/detail/${book.id}?page=1`)">
             开始阅读
           </button>
           <button class="resume-btn">收藏</button>
@@ -219,7 +219,7 @@ const confirmDelete = async () => {
           </div>
         </div>
       </div>
-    </template>
+    </div>
 
     <!-- 删除确认弹窗 -->
     <div v-if="deleteMode" class="dialog-overlay" @click.self="cancelDelete">
@@ -232,17 +232,47 @@ const confirmDelete = async () => {
         </div>
       </div>
     </div>
-
   </div>
 </template>
 
 <style scoped>
+
 .resume-page {
   display: flex;
   gap: 32px;
   padding: 32px;
   margin: 0 auto;
 }
+.resume-box{
+  width: 100%;
+  display: flex;
+  gap:30px;
+}
+@media (max-width: 740px) {
+  .resume-box {
+    display: ruby;
+    /* gap: 16px; */
+  }
+
+  .resume-cover {
+    width: 100%;
+    min-width: 0;
+    max-height: 300px;
+  }
+
+  .resume-cover img {
+    height: auto;
+    max-height: 300px;
+  }
+
+  .resume-info {
+    width: 100%;
+  }
+  .resume-info div{
+    justify-content: center;
+  }
+}
+
 
 .resume-cover {
   flex-shrink: 0;
