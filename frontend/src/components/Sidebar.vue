@@ -1,8 +1,8 @@
 <script setup>
 import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { Window } from '@wailsio/runtime'
-import { SaveWindowSize, LoadWindowSize } from '../../bindings/ReadBooks/appservice'
+import { Window, Browser } from '@wailsio/runtime'
+import { SaveWindowSize, LoadWindowSize, SwitchHttpModel, LoadState, GetHttpLink } from '@/api'
 
 const router = useRouter()
 const refreshHome = inject('refreshHome')
@@ -14,6 +14,10 @@ const isDark = ref(false)
 const isOpen = ref(false)
 const isRightSide = ref(false)
 const isBorderlessFullscreen = ref(false)
+const isHttpMode = ref(false)
+
+
+
 
 // --- 窗口尺寸 ---
 const sizePresets = [
@@ -42,6 +46,20 @@ const sideLabel = computed(() => (isRightSide.value ? '右侧' : '左侧'))
 const fullscreenLabel = computed(() => (
   isBorderlessFullscreen.value ? '退出无边框全屏' : '无边框全屏'
 ))
+// http开关
+const httpModeLabel = computed(() => (isHttpMode.value ? '已开启' : '已关闭'))
+const httpModelLink = ref()
+const switchHttpModel = async () => {
+  await SwitchHttpModel(isHttpMode.value).then((res)=>{
+    if (res.ok=='http'){
+      console.log('web模式无法启停http')
+    }
+  })
+}
+const openLinkTo = async (url) => {
+  if (isHttpMode.value) await Browser.OpenURL(url)
+}
+
 
 const openSidebar = () => {
   isOpen.value = true
@@ -160,7 +178,7 @@ watch(isRightSide, (val) => {
   localStorage.setItem(SIDE_STORAGE_KEY, val ? 'right' : 'left')
 })
 
-onMounted(() => {
+onMounted(async () => {
   const savedTheme = localStorage.getItem(THEME_STORAGE_KEY)
 
   isDark.value = savedTheme === 'dark'
@@ -169,6 +187,13 @@ onMounted(() => {
 
   const savedSide = localStorage.getItem(SIDE_STORAGE_KEY)
   isRightSide.value = savedSide === 'right'
+
+  await LoadState().then((res) => {
+    isHttpMode.value = res.http_is_open
+  })
+  await GetHttpLink().then((res) => {
+    httpModelLink.value = res
+  })
 
   window.addEventListener('keydown', handleKeydown)
 
@@ -252,6 +277,27 @@ watch(isDark, applyTheme)
             </div>
             <button class="size-apply-btn" type="button" @click="applyCustomSize">应用</button>
           </div>
+
+          <!-- HTTP 模式 -->
+          <div class="setting-panel">
+            <div>
+              <p class="setting-title">HTTP 模式</p>
+              <p class="setting-value">{{ httpModeLabel }}</p>
+              <p class="setting-value setting-link" 
+              
+              :style="{ 'text-decoration': isHttpMode ? 'underline' : 'line-through'}"
+                @click="openLinkTo(httpModelLink)" title="点击浏览器打开">
+                {{ httpModelLink }}
+              </p>
+            </div>
+
+            <label class="theme-switch" :class="isHttpMode ? 'model-switch' : ''">
+              <input v-model="isHttpMode" type="checkbox" @change="switchHttpModel" aria-label="切换 HTTP 模式" />
+              <span class="switch-track">
+                <span class="switch-thumb"></span>
+              </span>
+            </label>
+          </div>
         </section>
         <router-link to="/setting" class="sidebar-setting-btn" @click="closeSidebar">设置</router-link>
       </aside>
@@ -275,7 +321,6 @@ watch(isDark, applyTheme)
 }
 
 .sidebar-toggle-zone:hover {
-  transition: transform 0.2s ease;
   transform: translateX(50%);
 }
 
@@ -489,6 +534,10 @@ watch(isDark, applyTheme)
   line-height: 18px;
 }
 
+.setting-link {
+  cursor: pointer;
+}
+
 /* 主题开关 */
 .theme-switch {
   display: inline-flex;
@@ -501,6 +550,15 @@ watch(isDark, applyTheme)
   height: 1px;
   opacity: 0;
   pointer-events: none;
+}
+
+.model-switch .switch-track {
+  background-color: #14aa00;
+}
+
+.model-switch .switch-thumb {
+  background-color: #eafde7;
+
 }
 
 .switch-track {

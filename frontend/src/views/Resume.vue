@@ -1,7 +1,7 @@
 <script setup>
 import { ref, inject, onMounted, computed, watch } from 'vue'
 import { useRoute,useRouter } from 'vue-router'
-import { BookGet, BookGetTags, TagCreate, BookSetTags, BookDelete, BookDeleteWithFiles, GetChapters } from '../../bindings/ReadBooks/appservice'
+import { BookGet, BookGetTags, TagCreate, BookSetTags, BookDelete, BookDeleteWithFiles, GetChapters } from '@/api'
 
 const refreshHome = inject('refreshHome')
 const route = useRoute()

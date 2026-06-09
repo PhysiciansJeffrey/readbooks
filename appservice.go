@@ -444,7 +444,7 @@ func (a *AppService) BookGetTags(bookID int64) ([]*storage.Tag, error) {
 
 // loadWindowSize 从 state.json 读取窗口尺寸（包内共享，main 和 AppService 都能用）
 func loadWindowSize() (int, int) {
-	statePath := getDownloadStatePath()
+	statePath := getloadStatePath()
 	data, err := os.ReadFile(statePath)
 	if err != nil {
 		return 0, 0
@@ -463,7 +463,7 @@ func loadWindowSize() (int, int) {
 }
 
 func (a *AppService) SaveWindowSize(width, height int) error {
-	statePath := getDownloadStatePath()
+	statePath := getloadStatePath()
 	var state map[string]any
 	if data, err := os.ReadFile(statePath); err == nil {
 		json.Unmarshal(data, &state)
@@ -490,13 +490,8 @@ func (a *AppService) LoadWindowSize() (int, int, error) {
 
 // ========== 默认漫画目录 ==========
 
-func getDownloadStatePath() string {
-	exePath, _ := os.Executable()
-	return filepath.Join(filepath.Dir(exePath), "state.json")
-}
-
 func (a *AppService) GetDefaultComicDir() string {
-	statePath := getDownloadStatePath()
+	statePath := getloadStatePath()
 	data, err := os.ReadFile(statePath)
 	if err != nil {
 		return ""
@@ -511,7 +506,7 @@ func (a *AppService) GetDefaultComicDir() string {
 }
 
 func (a *AppService) SetDefaultComicDir(dir string) error {
-	statePath := getDownloadStatePath()
+	statePath := getloadStatePath()
 	var state map[string]any
 	if data, err := os.ReadFile(statePath); err == nil {
 		json.Unmarshal(data, &state)
@@ -532,7 +527,7 @@ func (a *AppService) SetDefaultComicDir(dir string) error {
 
 // getLastFolderPath 从 state.json 读取上次选择的文件夹路径
 func getLastFolderPath() string {
-	statePath := getDownloadStatePath()
+	statePath := getloadStatePath()
 	data, err := os.ReadFile(statePath)
 	if err != nil {
 		return ""
@@ -551,7 +546,7 @@ func saveLastFolderPath(dir string) {
 	if dir == "" {
 		return
 	}
-	statePath := getDownloadStatePath()
+	statePath := getloadStatePath()
 	var state map[string]any
 	if data, err := os.ReadFile(statePath); err == nil {
 		json.Unmarshal(data, &state)

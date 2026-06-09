@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted, computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { BookSearch } from '../../bindings/ReadBooks/appservice'
+import { BookSearch } from '@/api'
 import ComicGrid from '@/components/ComicGrid.vue'
 import Pagination from '@/components/Pagination.vue'
 

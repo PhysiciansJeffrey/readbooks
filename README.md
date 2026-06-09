@@ -18,21 +18,28 @@
 - 阅读进度记录（localStorage + 后端双写）
 - 横屏 / 竖屏阅读模式
 - 标签管理（创建、编辑、删除、搜索）
-- 漫画批量删除（含源文件）
+- 漫画批量删除（含源文件，网页端也可以操作）
 - 暗色 / 亮色主题切换
+- **双模式运行**：Wails 桌面应用 + 独立 HTTP 服务器（Web 端）
+- **局域网访问**：HTTP 服务器监听所有接口，其他设备可通过 `http://<本机局域网IP>:<端口>` 访问 (生成的state.json文件有完整链接，端口号冲突可以修改为其他)
 
 ## 目录结构
 
 ```
 ReadBooks/
-  main.go             
-  appservice.go       
+  main.go             入口 + 缩略图服务器
+  appservice.go       业务逻辑方法
+  apiservice.go       REST API + HTTP 服务器
   comicutil.go        漫画扫描、元数据解析（JM下载器下载的漫画扫描）
-  internal/storage/   SQLite
-  frontend/           
-    src/views/        
-    src/components/   
-  build/              
+  helputil.go         state.json 读写工具
+  internal/storage/   SQLite 数据层
+    book.go
+    tag.go
+    manager.go
+  frontend/
+    src/views/
+    src/components/
+  build/
 ```
 
 

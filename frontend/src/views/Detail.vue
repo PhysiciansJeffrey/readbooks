@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { BookGet, BookGetImage, BookUpdateProgress } from '../../bindings/ReadBooks/appservice'
+import { BookGet, BookGetImage, BookUpdateProgress } from '@/api'
 
 const route = useRoute()
 const router = useRouter()

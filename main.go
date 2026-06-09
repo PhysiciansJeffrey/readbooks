@@ -4,13 +4,11 @@ import (
 	"ReadBooks/internal/storage"
 	"bytes"
 	"embed"
-	_ "embed"
 	"image"
 	"image/jpeg"
 	"log"
 	"net/http"
 	"os"
-	"strings"
 	"sync"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -110,30 +108,20 @@ func init() {
 }
 
 func main() {
-
+	appservice := &AppService{}
+	apiservice := &ApiService{
+		asr: appservice,
+	}
 	app := application.New(application.Options{
 		Name:        "ReadBooks",
 		Description: "",
 		Services: []application.Service{
-			application.NewService(&AppService{}),
+			application.NewService(appservice),
+			application.NewService(apiservice),
 		},
 		Assets: application.AssetOptions{
-			Handler: application.AssetFileServerFS(assets),
-			Middleware: func(next http.Handler) http.Handler {
-				return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-					if strings.HasPrefix(r.URL.Path, "/api/image") {
-						path := r.URL.Query().Get("p")
-						if path == "" {
-							http.Error(w, "missing path", 400)
-							return
-						}
-						cover := r.URL.Query().Get("cover") == "1"
-						serveThumbnail(w, r, path, cover)
-						return
-					}
-					next.ServeHTTP(w, r)
-				})
-			},
+			Handler:    application.AssetFileServerFS(assets),
+			Middleware: apiservice.WailsMiddleware(),
 		},
 		Mac: application.MacOptions{
 			ApplicationShouldTerminateAfterLastWindowClosed: true,

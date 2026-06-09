@@ -1,8 +1,7 @@
 <script setup>
 import { computed } from 'vue'
-import { useRoute } from 'vue-router'
-import { BookList } from '../../bindings/ReadBooks/appservice'
-import { useRouter } from 'vue-router'
+import { useRoute,useRouter } from 'vue-router'
+import { BookList } from '@/api'
 
 const props = defineProps({
   pages: {

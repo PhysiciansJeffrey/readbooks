@@ -1,6 +1,6 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
-import { BookList } from '../../bindings/ReadBooks/appservice'
+import { BookList } from '@/api'
 import ComicGrid from '@/components/ComicGrid.vue'
 import Pagination from '@/components/Pagination.vue'
 
@@ -32,7 +32,6 @@ const fetchComics = async (page = 1) => {
     totalBooks.value = 0
   } finally {
     loading.value = false
-    // jumpPage.value = page
   }
 }
 

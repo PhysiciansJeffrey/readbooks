@@ -1,7 +1,7 @@
 <script setup>
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { BookDeleteWithFiles } from '../../bindings/ReadBooks/appservice'
+import { BookDeleteWithFiles } from '@/api'
 
 const emit = defineEmits(['refresh'])
 

@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
-import { SelectFolder, AddsComic, TagListWithCount, TagUpdate, TagDelete, TagCreate, GetDefaultComicDir, SetDefaultComicDir } from '../../bindings/ReadBooks/appservice'
+import { SelectFolder, AddsComic, TagListWithCount, TagUpdate, TagDelete, TagCreate, GetDefaultComicDir, SetDefaultComicDir } from '@/api'
 
 const router = useRouter()
 
