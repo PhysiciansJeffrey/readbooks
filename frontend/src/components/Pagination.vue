@@ -112,6 +112,8 @@ watch(() => props.currentPage, (v) => { jumpPageRef.value = v })
   align-items: center;
   justify-content: center;
   gap: 6px;
+  flex-wrap: wrap;
+  row-gap: 8px;
   padding: 12px 0;
   background: var(--sidebar-bg);
   border-top: 1px solid var(--sidebar-border);

@@ -91,7 +91,7 @@ func ListBooks(page, pageSize int) ([]*Book, int, error) {
 		`SELECT id, title, author, description, parent, sort_order, file_path, total_pages, current_page, cover_url, jmid, status, created_at, updated_at
 		 FROM books
 		 where parent <= 1
-		 ORDER BY sort_order,updated_at asc LIMIT ? OFFSET ?`,
+		 ORDER BY updated_at asc,created_at desc LIMIT ? OFFSET ?`,
 		pageSize, (page-1)*pageSize,
 	)
 	if err != nil {

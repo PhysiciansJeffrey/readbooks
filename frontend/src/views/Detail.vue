@@ -461,8 +461,8 @@ watch(() => route.params.id, loadBook)
 /* ========== 右下角浮动按钮 ========== */
 .floating-btns {
   position: fixed;
-  bottom: 76px;
-  right: 24px;
+  bottom: 155px;
+  right: 5px;
   display: flex;
   flex-direction: column;
   gap: 8px;

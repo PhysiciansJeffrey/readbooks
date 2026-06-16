@@ -118,9 +118,15 @@ const confirmDelete = async () => {
 <style scoped>
 .delete-box {
   position: fixed;
-    bottom: 30px;
-    right: 75px;
+    bottom: 70px;
+    right: 55px;
     z-index: 11;
+}
+
+@media (max-width: 539px) {
+  .delete-box {
+    bottom: 115px;
+  }
 }
 
 .delete-mode-btn {
