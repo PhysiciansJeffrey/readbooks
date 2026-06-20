@@ -72,7 +72,8 @@ const randomRead = async () => {
     const randomBook = available[Math.floor(Math.random() * available.length)]
     readIds.add(randomBook.id)
     saveReadIds()
-    router.push(`/resume/${randomBook.id}`)
+    const target = route.name === 'Detail' ? `/detail/${randomBook.id}` : `/resume/${randomBook.id}`
+    router.push(target)
   } catch (e) {
     console.error('随机跳转失败:', e)
   }

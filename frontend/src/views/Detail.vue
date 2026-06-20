@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { BookGet, BookGetImage, BookUpdateProgress } from '@/api'
+import { BookGet, BookGetImage, BookUpdateProgress, GetChapters, BookList } from '@/api'
 
 const route = useRoute()
 const router = useRouter()
@@ -12,6 +12,33 @@ const error = ref('')
 const book = ref(null)
 const images = ref([])
 const totalPages = ref(0)
+const chapters = ref([])
+
+// 是否有上一章/下一章
+const hasPrevChapter = computed(() => {
+  if (!book.value || chapters.value.length === 0) return false
+  const idx = chapters.value.findIndex(c => c.id === book.value.id)
+  return idx > 0
+})
+const hasNextChapter = computed(() => {
+  if (!book.value || chapters.value.length === 0) return false
+  const idx = chapters.value.findIndex(c => c.id === book.value.id)
+  return idx >= 0 && idx < chapters.value.length - 1
+})
+
+const prevChapter = () => {
+  const idx = chapters.value.findIndex(c => c.id === book.value?.id)
+  if (idx <= 0) return
+  stopAutoPlay()
+  router.push(`/detail/${chapters.value[idx - 1].id}`)
+}
+
+const nextChapter = () => {
+  const idx = chapters.value.findIndex(c => c.id === book.value?.id)
+  if (idx < 0 || idx >= chapters.value.length - 1) return
+  stopAutoPlay()
+  router.push(`/detail/${chapters.value[idx + 1].id}`)
+}
 
 const viewMode = ref('horizontal')
 const displayPage = ref(1)   // 当前页码（从1开始，统一用实际图片页码）
@@ -19,6 +46,123 @@ const preloadCache = new Map()
 const showPageSelect = ref(false)
 const PROGRESS_KEY_PREFIX = 'readbooks-progress-'
 const VIEW_MODE_KEY = 'readbooks-view-mode'
+const AUTOPLAY_KEY = 'readbooks-autoplay'
+
+// ========== 自动播放 ==========
+const autoPlaying = ref(false)
+const countdown = ref(null)
+let autoPlayTimer = null
+let countdownTimer = null
+
+const goToRandomBook = async () => {
+  try {
+    const [books] = await BookList(1, 10000)
+    if (!books || books.length === 0) return
+    const book = books[Math.floor(Math.random() * books.length)]
+    router.push(`/detail/${book.id}`)
+  } catch (e) {
+    console.error('随机跳转失败:', e)
+  }
+}
+
+const cancelCountdown = () => {
+  if (countdownTimer) {
+    clearInterval(countdownTimer)
+    countdownTimer = null
+  }
+  countdown.value = null
+}
+
+const startCountdown = () => {
+  countdown.value = 5
+  countdownTimer = setInterval(() => {
+    countdown.value--
+    if (countdown.value <= 0) {
+      cancelCountdown()
+      goToRandomBook()
+    }
+  }, 1000)
+}
+
+const resetCountdown = () => {
+  if (countdown.value === null) return
+  if (countdownTimer) clearInterval(countdownTimer)
+  countdown.value = 5
+  countdownTimer = setInterval(() => {
+    countdown.value--
+    if (countdown.value <= 0) {
+      cancelCountdown()
+      goToRandomBook()
+    }
+  }, 1000)
+}
+
+const tryNextChapter = async () => {
+  if (!book.value || book.value.parent < 1) {
+    startCountdown()
+    return
+  }
+  try {
+    const chapters = await GetChapters(book.value.jmid, book.value.parent)
+    if (!chapters || chapters.length === 0) {
+      startCountdown()
+      return
+    }
+    const currentId = book.value.id
+    const idx = chapters.findIndex(c => c.id === currentId)
+    if (idx < 0 || idx >= chapters.length - 1) {
+      startCountdown()
+      return
+    }
+    const nextBook = chapters[idx + 1]
+    router.push(`/detail/${nextBook.id}`)
+  } catch (e) {
+    console.error('获取下一章失败:', e)
+    startCountdown()
+  }
+}
+
+const startAutoPlay = () => {
+  if (autoPlaying.value) return
+  autoPlaying.value = true
+  autoPlayTimer = setInterval(() => {
+    if (displayPage.value >= totalPages.value) {
+      clearInterval(autoPlayTimer)
+      autoPlayTimer = null
+      autoPlaying.value = false
+      tryNextChapter()
+      return
+    }
+    displayPage.value++
+    preloadImages(normalizedPage.value - 1)
+    saveProgress()
+    scrollToCurrentPage()
+  }, 4000)
+}
+
+const stopAutoPlay = () => {
+  cancelCountdown()
+  autoPlaying.value = false
+  if (autoPlayTimer) {
+    clearInterval(autoPlayTimer)
+    autoPlayTimer = null
+  }
+}
+
+const toggleAutoPlay = () => {
+  if (countdown.value !== null) {
+    cancelCountdown()
+    localStorage.setItem(AUTOPLAY_KEY, '0')
+    return
+  }
+  if (autoPlaying.value) {
+    stopAutoPlay()
+    localStorage.setItem(AUTOPLAY_KEY, '0')
+  } else {
+    startAutoPlay()
+    localStorage.setItem(AUTOPLAY_KEY, '1')
+  }
+}
 
 // ========== 竖屏拖拽滚动 ==========
 const isDragging = ref(false)
@@ -27,7 +171,6 @@ const dragStartScrollY = ref(0)
 
 const onVerticalMousedown = (e) => {
   if (viewMode.value !== 'vertical') return
-  console.log('[drag] mousedown', window.scrollY)
   isDragging.value = true
   dragStartY.value = e.clientY
   dragStartScrollY.value = window.scrollY
@@ -40,7 +183,6 @@ const onVerticalMousemove = (e) => {
   if (!isDragging.value) return
   const dy = e.clientY - dragStartY.value
   const newY = dragStartScrollY.value - dy
-  console.log('[drag] move', dy, newY)
   window.scrollTo({ top: newY, behavior: 'instant' })
 }
 
@@ -125,6 +267,7 @@ const scrollToCurrentPage = () => {
 
 
 const prevPage = () => {
+  resetCountdown()
   if (viewMode.value === 'horizontal') {
     if (normalizedPage.value <= 1) return
     displayPage.value = normalizedPage.value - 2
@@ -138,6 +281,7 @@ const prevPage = () => {
 }
 
 const nextPage = () => {
+  resetCountdown()
   if (viewMode.value === 'horizontal') {
     if (normalizedPage.value + 1 >= totalPages.value) return
     displayPage.value = normalizedPage.value + 2
@@ -151,6 +295,7 @@ const nextPage = () => {
 }
 
 const goToPage = (page) => {
+  resetCountdown()
   if (page < 1 || page > totalPages.value) return
   displayPage.value = page
   showPageSelect.value = false
@@ -200,6 +345,7 @@ const onScroll = () => {
 
 // ========== 切换模式 ==========
 const toggleViewMode = () => {
+  stopAutoPlay()
   viewMode.value = viewMode.value === 'horizontal' ? 'vertical' : 'horizontal'
   localStorage.setItem(VIEW_MODE_KEY, viewMode.value)
 }
@@ -218,6 +364,7 @@ const onKeydown = (e) => {
 
 // ========== 加载漫画 ==========
 const loadBook = async () => {
+  stopAutoPlay()
   loading.value = true
   error.value = ''
   images.value = []
@@ -232,6 +379,18 @@ const loadBook = async () => {
     }
     book.value = result
 
+    // 加载章节信息（用于上一章/下一章按钮）
+    if (result.parent >= 1) {
+      try {
+        const list = await GetChapters(result.jmid, result.parent)
+        chapters.value = list || []
+      } catch (e) {
+        console.error('加载章节失败:', e)
+      }
+    } else {
+      chapters.value = []
+    }
+
     const imgs = await BookGetImage(Number(id), 1)
     if (!imgs || imgs.length === 0) {
       error.value = '该漫画没有图片'
@@ -240,10 +399,9 @@ const loadBook = async () => {
     images.value = imgs.filter(Boolean)
     totalPages.value = images.value.length
 
-    // 恢复阅读位置：URL 参数 > localStorage > 默认第1页
+    // 恢复阅读位置：URL 参数决定起始页，阅读页只记录不自动跳转
     const urlPage = parseInt(route.query.page, 10)
-    const savedPage = parseInt(localStorage.getItem(`${PROGRESS_KEY_PREFIX}${id}`), 10)
-    let startPage = urlPage > 0 ? urlPage : (savedPage > 0 ? savedPage : 1)
+    let startPage = urlPage > 0 ? urlPage : 1
     if (startPage > totalPages.value) startPage = 1
     displayPage.value = startPage
 
@@ -254,6 +412,11 @@ const loadBook = async () => {
     }
 
     preloadImages(normalizedPage.value - 1)
+
+    // 缓存了自动播放状态 → 自动开始播放
+    if (localStorage.getItem(AUTOPLAY_KEY) === '1') {
+      setTimeout(() => startAutoPlay(), 300)
+    }
 
     // 延迟绑定滚动事件（滚动在 window 上）
     setTimeout(() => {
@@ -275,6 +438,7 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  stopAutoPlay()
   window.removeEventListener('keydown', onKeydown)
   window.removeEventListener('scroll', onScroll)
   window.removeEventListener('mousemove', onVerticalMousemove)
@@ -329,6 +493,11 @@ watch(() => route.params.id, loadBook)
       <!-- 右下角浮动按钮组 -->
       <div class="floating-btns">
         <button v-if="viewMode === 'vertical'" class="float-btn" title="跳到顶部" @click="scrollToTop">↑</button>
+        <button v-if="viewMode === 'vertical'" class="float-btn" :class="{ 'auto-play-running': autoPlaying, 'auto-play-countdown': countdown !== null }" title="自动播放" @click="toggleAutoPlay">
+          {{ countdown !== null ? countdown : (autoPlaying ? '⏸' : '▶') }}
+        </button>
+        <button v-if="hasPrevChapter" class="float-btn" title="上一章" @click="prevChapter">◀</button>
+        <button v-if="hasNextChapter" class="float-btn" title="下一章" @click="nextChapter">▶</button>
         <div class="float-btn-group">
           <button class="float-btn" title="切换页码" @click="showPageSelect = !showPageSelect">
             {{ pageText }}
@@ -496,6 +665,18 @@ watch(() => route.params.id, loadBook)
 
 .float-btn:focus-visible {
   box-shadow: 0 0 0 2px var(--focus-ring);
+}
+
+.float-btn.auto-play-running {
+  background: #27ae60;
+  border-color: #27ae60;
+  color: #fff;
+}
+
+.float-btn.auto-play-countdown {
+  background: #e67e22;
+  border-color: #e67e22;
+  color: #fff;
 }
 
 /* 页码选择下拉 */
