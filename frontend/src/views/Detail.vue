@@ -1,7 +1,8 @@
 <script setup>
 import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { BookGet, BookGetImage, BookUpdateProgress, GetChapters, BookList } from '@/api'
+import { BookGet, BookGetImage, BookUpdateProgress, GetChapters } from '@/api'
+import { getUnreadRandomBook } from '@/utils/randomReader'
 
 const route = useRoute()
 const router = useRouter()
@@ -45,6 +46,7 @@ const preloadCache = new Map()
 const showPageSelect = ref(false)
 const showSleepTimer = ref(false)  // 倒计时设置弹窗
 const sleepTimerInput = ref('')    // 自定义分钟输入
+const pendingAutoPlay = ref(false) // 等待第一页加载后才启动自动播放
 const PROGRESS_KEY_PREFIX = 'readbooks-progress-'
 const VIEW_MODE_KEY = 'readbooks-view-mode'
 const AUTOPLAY_KEY = 'readbooks-autoplay'
@@ -76,10 +78,9 @@ const releaseWakeLock = () => {
 
 const goToRandomBook = async () => {
   try {
-    const [books] = await BookList(1, 10000)
-    if (!books || books.length === 0) return
-    const book = books[Math.floor(Math.random() * books.length)]
-    router.push(`/detail/${book.id}`)
+    const book = await getUnreadRandomBook()
+    if (!book) return
+    router.push(`/detail/${book.id}?page=1`)
   } catch (e) {
     console.error('随机跳转失败:', e)
   }
@@ -135,7 +136,7 @@ const tryNextChapter = async () => {
       return
     }
     const nextBook = chapters[idx + 1]
-    router.push(`/detail/${nextBook.id}`)
+    router.push(`/detail/${nextBook.id}?page=1`)
   } catch (e) {
     console.error('获取下一章失败:', e)
     startCountdown()
@@ -158,7 +159,7 @@ const startAutoPlay = () => {
     preloadImages(normalizedPage.value - 1)
     saveProgress()
     scrollToCurrentPage()
-  }, 4000)
+  }, 5000)
 }
 
 const stopAutoPlay = () => {
@@ -169,6 +170,33 @@ const stopAutoPlay = () => {
     clearInterval(autoPlayTimer)
     autoPlayTimer = null
   }
+}
+
+// 等待当前页的第一张图片加载完成
+const waitForFirstPageLoad = () => {
+  return new Promise((resolve) => {
+    const pageIdx = normalizedPage.value - 1
+    let paths = []
+    if (viewMode.value === 'horizontal') {
+      paths = [images.value[pageIdx], images.value[pageIdx + 1]].filter(Boolean)
+    } else {
+      paths = [images.value[pageIdx]]
+    }
+    if (paths.length === 0) {
+      resolve()
+      return
+    }
+    let loaded = 0
+    const total = paths.length
+    paths.forEach(p => {
+      const img = new Image()
+      img.onload = img.onerror = () => {
+        loaded++
+        if (loaded >= total) resolve()
+      }
+      img.src = imageUrl(p)
+    })
+  })
 }
 
 const toggleAutoPlay = () => {
@@ -455,6 +483,7 @@ const onKeydown = (e) => {
 // ========== 加载漫画 ==========
 const loadBook = async () => {
   stopAutoPlay()
+  displayPage.value = 1
   loading.value = true
   error.value = ''
   images.value = []
@@ -503,9 +532,9 @@ const loadBook = async () => {
 
     preloadImages(normalizedPage.value - 1)
 
-    // 缓存了自动播放状态 → 自动开始播放
+    // 缓存了自动播放状态 → 等第一页加载完再开始
     if (localStorage.getItem(AUTOPLAY_KEY) === '1') {
-      setTimeout(() => startAutoPlay(), 300)
+      waitForFirstPageLoad().then(() => startAutoPlay())
     }
 
     // 恢复倒计时（跨页面持久化）
@@ -608,7 +637,7 @@ watch(() => route.params.id, loadBook)
 
       <!-- 右下角浮动按钮组 -->
       <div class="floating-btns">
-        <button v-if="viewMode === 'vertical'" class="float-btn" title="跳到顶部" @click="scrollToTop">↑</button>
+        <!-- <button v-if="viewMode === 'vertical'" class="float-btn" title="跳到顶部" @click="scrollToTop">↑</button> -->
         <button v-if="viewMode === 'vertical'" class="float-btn" :class="{ 'auto-play-running': autoPlaying, 'auto-play-countdown': countdown !== null }" title="自动播放" @click="toggleAutoPlay">
           {{ countdown !== null ? countdown : (autoPlaying ? '⏸' : '▶') }}
         </button>
@@ -654,7 +683,10 @@ watch(() => route.params.id, loadBook)
   </div>
 </template>
 
-<style scoped>
+<style >
+#app{
+  width: 97% !important;
+}
 .detail-page {
   min-height: 100vh;
   background: var(--app-bg);
