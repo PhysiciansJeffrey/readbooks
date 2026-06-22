@@ -39,20 +39,40 @@ const nextChapter = () => {
   stopAutoPlay()
   router.push(`/detail/${chapters.value[idx + 1].id}`)
 }
-
 const viewMode = ref('horizontal')
-const displayPage = ref(1)   // 当前页码（从1开始，统一用实际图片页码）
+const displayPage = ref(1)
 const preloadCache = new Map()
 const showPageSelect = ref(false)
+const showSleepTimer = ref(false)  // 倒计时设置弹窗
+const sleepTimerInput = ref('')    // 自定义分钟输入
 const PROGRESS_KEY_PREFIX = 'readbooks-progress-'
 const VIEW_MODE_KEY = 'readbooks-view-mode'
 const AUTOPLAY_KEY = 'readbooks-autoplay'
+const SLEEP_END_KEY = 'readbooks-sleep-end'
 
 // ========== 自动播放 ==========
 const autoPlaying = ref(false)
 const countdown = ref(null)
+const sleepTimer = ref(null)   // 自动播放倒计时（分钟），null 表示不限制
 let autoPlayTimer = null
 let countdownTimer = null
+let sleepTimerInterval = null
+let wakeLockSentinel = null
+
+const requestWakeLock = async () => {
+  try {
+    if ('wakeLock' in navigator) {
+      wakeLockSentinel = await navigator.wakeLock.request('screen')
+    }
+  } catch { /* HTTPS 或其他原因不支持，忽略 */ }
+}
+
+const releaseWakeLock = () => {
+  if (wakeLockSentinel) {
+    wakeLockSentinel.release().catch(() => {})
+    wakeLockSentinel = null
+  }
+}
 
 const goToRandomBook = async () => {
   try {
@@ -125,6 +145,7 @@ const tryNextChapter = async () => {
 const startAutoPlay = () => {
   if (autoPlaying.value) return
   autoPlaying.value = true
+  requestWakeLock()
   autoPlayTimer = setInterval(() => {
     if (displayPage.value >= totalPages.value) {
       clearInterval(autoPlayTimer)
@@ -142,6 +163,7 @@ const startAutoPlay = () => {
 
 const stopAutoPlay = () => {
   cancelCountdown()
+  releaseWakeLock()
   autoPlaying.value = false
   if (autoPlayTimer) {
     clearInterval(autoPlayTimer)
@@ -162,6 +184,74 @@ const toggleAutoPlay = () => {
     startAutoPlay()
     localStorage.setItem(AUTOPLAY_KEY, '1')
   }
+}
+
+// ========== 自动播放倒计时（跨页面持久化，按秒记录）==========
+const stopSleepTimer = () => {
+  if (sleepTimerInterval) {
+    clearInterval(sleepTimerInterval)
+    sleepTimerInterval = null
+  }
+  sleepTimer.value = null
+  showSleepTimer.value = false
+  sleepTimerInput.value = ''
+  localStorage.removeItem(SLEEP_END_KEY)
+}
+
+// 从 localStorage 恢复倒计时，返回 true 表示有效
+const restoreSleepTimer = () => {
+  const endStr = localStorage.getItem(SLEEP_END_KEY)
+  if (!endStr) return false
+  const end = parseInt(endStr, 10)
+  if (isNaN(end)) return false
+  const remainingSec = Math.ceil((end - Date.now()) / 1000)
+  if (remainingSec <= 0) {
+    localStorage.removeItem(SLEEP_END_KEY)
+    return false
+  }
+  const minutes = Math.ceil(remainingSec / 60)
+  sleepTimer.value = minutes
+
+  if (sleepTimerInterval) clearInterval(sleepTimerInterval)
+  sleepTimerInterval = setInterval(() => {
+    const left = Math.ceil((end - Date.now()) / 1000)
+    if (left <= 0) {
+      stopSleepTimer()
+      stopAutoPlay()
+      return
+    }
+    // 显示剩余分钟（向上取整）
+    sleepTimer.value = Math.ceil(left / 60)
+  }, 1000)
+  return true
+}
+
+const startSleepTimer = (minutes) => {
+  if (!autoPlaying.value || minutes < 1) return
+  if (minutes > 999) minutes = 999
+  const end = Date.now() + minutes * 60000
+  localStorage.setItem(SLEEP_END_KEY, String(end))
+
+  sleepTimer.value = minutes
+  showSleepTimer.value = false
+  sleepTimerInput.value = ''
+
+  if (sleepTimerInterval) clearInterval(sleepTimerInterval)
+  sleepTimerInterval = setInterval(() => {
+    const left = Math.ceil((end - Date.now()) / 1000)
+    if (left <= 0) {
+      stopSleepTimer()
+      stopAutoPlay()
+      return
+    }
+    sleepTimer.value = Math.ceil(left / 60)
+  }, 1000)
+}
+
+const submitCustomSleepTimer = () => {
+  const m = parseInt(sleepTimerInput.value, 10)
+  if (isNaN(m) || m < 1) return
+  startSleepTimer(m)
 }
 
 // ========== 竖屏拖拽滚动 ==========
@@ -418,6 +508,9 @@ const loadBook = async () => {
       setTimeout(() => startAutoPlay(), 300)
     }
 
+    // 恢复倒计时（跨页面持久化）
+    setTimeout(() => restoreSleepTimer(), 500)
+
     // 延迟绑定滚动事件（滚动在 window 上）
     setTimeout(() => {
       window.addEventListener('scroll', onScroll, { passive: true })
@@ -430,19 +523,42 @@ const loadBook = async () => {
 }
 
 // ========== 生命周期 ==========
+// 页面恢复可见时，如果仍在自动播放则重新请求常亮
+const onVisibilityChange = () => {
+  if (document.visibilityState === 'visible' && autoPlaying.value) {
+    requestWakeLock()
+  }
+}
+
+// 点击外部关闭倒计时弹窗
+const onDocClick = (e) => {
+  if (showSleepTimer.value && !e.target.closest('.float-btn-group')) {
+    showSleepTimer.value = false
+  }
+}
+
 onMounted(() => {
   loadBook()
   window.addEventListener('keydown', onKeydown)
   window.addEventListener('mousemove', onVerticalMousemove)
   window.addEventListener('mouseup', onVerticalMouseup)
+  document.addEventListener('visibilitychange', onVisibilityChange)
+  document.addEventListener('click', onDocClick)
 })
 
 onUnmounted(() => {
   stopAutoPlay()
+  // 保留倒计时 localStorage，但清理当前 interval
+  if (sleepTimerInterval) {
+    clearInterval(sleepTimerInterval)
+    sleepTimerInterval = null
+  }
   window.removeEventListener('keydown', onKeydown)
   window.removeEventListener('scroll', onScroll)
   window.removeEventListener('mousemove', onVerticalMousemove)
   window.removeEventListener('mouseup', onVerticalMouseup)
+  document.removeEventListener('visibilitychange', onVisibilityChange)
+  document.removeEventListener('click', onDocClick)
   preloadCache.clear()
   // 退出页面时保存阅读进度到数据库
   if (book.value) {
@@ -496,6 +612,22 @@ watch(() => route.params.id, loadBook)
         <button v-if="viewMode === 'vertical'" class="float-btn" :class="{ 'auto-play-running': autoPlaying, 'auto-play-countdown': countdown !== null }" title="自动播放" @click="toggleAutoPlay">
           {{ countdown !== null ? countdown : (autoPlaying ? '⏸' : '▶') }}
         </button>
+        <div v-if="autoPlaying" class="float-btn-group">
+          <button class="float-btn" :class="{ 'sleep-timer-on': sleepTimer !== null }" title="自动播放倒计时" @click="showSleepTimer = !showSleepTimer">
+            {{ sleepTimer !== null ? `⏱${sleepTimer}` : '⏱' }}
+          </button>
+          <div v-if="showSleepTimer" class="sleep-timer-dropdown" @click.stop>
+            <div class="sleep-timer-list">
+              <button v-for="t in [15, 30, 60, 90, 120]" :key="t" class="sleep-timer-item" :class="{ active: sleepTimer === t }" @click="startSleepTimer(t)">
+                {{ t }}分钟
+              </button>
+              <div class="sleep-timer-custom">
+                <input v-model="sleepTimerInput" type="number" min="1" max="999" placeholder="自定义分钟" @keyup.enter="submitCustomSleepTimer" />
+                <button class="sleep-timer-go" @click="submitCustomSleepTimer">确定</button>
+              </div>
+            </div>
+          </div>
+        </div>
         <button v-if="hasPrevChapter" class="float-btn" title="上一章" @click="prevChapter">◀</button>
         <button v-if="hasNextChapter" class="float-btn" title="下一章" @click="nextChapter">▶</button>
         <div class="float-btn-group">
@@ -677,6 +809,89 @@ watch(() => route.params.id, loadBook)
   background: #e67e22;
   border-color: #e67e22;
   color: #fff;
+}
+
+.float-btn.sleep-timer-on {
+  background: #2980b9;
+  border-color: #2980b9;
+  color: #fff;
+}
+
+/* 倒计时选择下拉 */
+.sleep-timer-dropdown {
+  position: absolute;
+  bottom: 0;
+  right: 52px;
+  background: var(--sidebar-bg);
+  border: 1px solid var(--sidebar-border);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  overflow: hidden;
+  min-width: 140px;
+}
+
+.sleep-timer-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px;
+}
+
+.sleep-timer-item {
+  padding: 6px 12px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--app-text);
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.sleep-timer-item:hover {
+  background: var(--switch-bg);
+  border-color: var(--switch-border);
+}
+
+.sleep-timer-item.active {
+  background: var(--app-text);
+  color: var(--app-bg);
+  font-weight: 600;
+}
+
+.sleep-timer-custom {
+  display: flex;
+  gap: 4px;
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid var(--sidebar-border);
+}
+
+.sleep-timer-custom input {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 6px;
+  border: 1px solid var(--switch-border);
+  border-radius: 4px;
+  background: var(--app-bg);
+  color: var(--app-text);
+  font-size: 12px;
+  outline: none;
+}
+
+.sleep-timer-custom input:focus {
+  border-color: var(--app-text);
+}
+
+.sleep-timer-go {
+  padding: 4px 8px;
+  border: 1px solid #2980b9;
+  border-radius: 4px;
+  background: #2980b9;
+  color: #fff;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
 }
 
 /* 页码选择下拉 */

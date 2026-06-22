@@ -2,11 +2,21 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"io"
 	"io/fs"
+	"math/big"
+	"net"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -50,7 +60,7 @@ func (a *ApiService) GetHttpLink() string {
 	// if s := a.LoadState(); s != nil && s.Port != "" {
 	// 	port = s.Port
 	// }
-	return "http://localhost:" + a.LoadState().Port
+	return "https://localhost:" + a.LoadState().Port
 }
 
 func (a *ApiService) APIHandler() http.Handler {
@@ -95,28 +105,107 @@ func (a *ApiService) createMux() http.Handler {
 	return mux
 }
 
-// 启动server
+// 生成/加载自签名 TLS 证书（存储在 exe 同级 cert.pem / key.pem）
+func ensureTLSCert() (*tls.Config, error) {
+	certFile := filepath.Join(filepath.Dir(getloadStatePath()), "cert.pem")
+	keyFile := filepath.Join(filepath.Dir(getloadStatePath()), "key.pem")
+
+	if _, err := os.Stat(certFile); os.IsNotExist(err) {
+		priv, err := rsa.GenerateKey(rand.Reader, 2048)
+		if err != nil {
+			return nil, fmt.Errorf("generate key: %w", err)
+		}
+		template := x509.Certificate{
+			SerialNumber:          big.NewInt(1),
+			Subject:               pkix.Name{CommonName: "ReadBooks"},
+			NotBefore:             time.Now(),
+			NotAfter:              time.Now().Add(365 * 24 * time.Hour),
+			KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
+			ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+			BasicConstraintsValid: true,
+			IPAddresses:           []net.IP{net.ParseIP("0.0.0.0")},
+		}
+		certDER, err := x509.CreateCertificate(rand.Reader, &template, &template, &priv.PublicKey, priv)
+		if err != nil {
+			return nil, fmt.Errorf("create cert: %w", err)
+		}
+		certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
+		keyPEM := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(priv)})
+		if err := os.WriteFile(certFile, certPEM, 0644); err != nil {
+			return nil, err
+		}
+		if err := os.WriteFile(keyFile, keyPEM, 0600); err != nil {
+			return nil, err
+		}
+	}
+
+	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
+	if err != nil {
+		return nil, err
+	}
+	return &tls.Config{Certificates: []tls.Certificate{cert}}, nil
+}
+
+// 启动 HTTPS server
 func (a *ApiService) startupHttp() {
 	state := a.LoadState()
 	port := "9245"
 	if state != nil && state.Port != "" {
 		port = state.Port
 	}
+
+	tlsConfig, err := ensureTLSCert()
+	if err != nil {
+		fmt.Println("TLS cert error, falling back to HTTP:", err)
+		// fallback: 纯 HTTP（不阻止启动）
+		hsr := &http.Server{
+			Addr:    ":" + port,
+			Handler: a.createMux(),
+		}
+		a.mu.Lock()
+		a.hsr = hsr
+		stopchan := a.stopChan
+		a.mu.Unlock()
+
+		fmt.Printf("API 服务器已启动 → https://%s:%s\n", getLocalIP(), port)
+		setStateHttpIP(fmt.Sprintf("https://%s:%s", getLocalIP(), port))
+
+		go func() {
+			<-stopchan
+			ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+			defer cancel()
+			hsr.Shutdown(ctx)
+			a.mu.Lock()
+			a.isRunning = false
+			a.hsr = nil
+			a.mu.Unlock()
+		}()
+
+		if err := hsr.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			println("API 服务错误:", err.Error())
+			a.mu.Lock()
+			a.isRunning = false
+			a.hsr = nil
+			a.mu.Unlock()
+		}
+		return
+	}
+
 	hsr := &http.Server{
-		Addr:    ":" + port,
-		Handler: a.createMux(),
+		Addr:      ":" + port,
+		Handler:   a.createMux(),
+		TLSConfig: tlsConfig,
 	}
 	a.mu.Lock()
 	a.hsr = hsr
 	stopchan := a.stopChan
 	a.mu.Unlock()
 
-	fmt.Printf("API 服务器已启动 → http://%s:%s\n", getLocalIP(), port)
-	setStateHttpIP(fmt.Sprintf("http://%s:%s", getLocalIP(), port))
+	fmt.Printf("API 服务器已启动 → https://%s:%s\n", getLocalIP(), port)
+	setStateHttpIP(fmt.Sprintf("https://%s:%s", getLocalIP(), port))
 
 	go func() {
 		<-stopchan
-
 		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 		defer cancel()
 		if err := hsr.Shutdown(ctx); err != nil {
@@ -129,7 +218,7 @@ func (a *ApiService) startupHttp() {
 		a.mu.Unlock()
 	}()
 
-	if err := hsr.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+	if err := hsr.ListenAndServeTLS("", ""); err != nil && err != http.ErrServerClosed {
 		println("API 服务错误:", err.Error())
 		a.mu.Lock()
 		a.isRunning = false
