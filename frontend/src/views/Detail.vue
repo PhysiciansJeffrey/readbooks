@@ -432,7 +432,6 @@ const goToPage = (page) => {
     }, 50)
   }
 }
-watch(displayPage,(n,o)=>{  console.trace('new:'+n) ; console.log('old:'+o)})
 
 // ========== 横屏点击 ==========
 const onImageAreaClick = (e) => {
@@ -517,17 +516,25 @@ const loadBook = async () => {
     }
     images.value = imgs.filter(Boolean)
     totalPages.value = images.value.length
-
     // 恢复阅读位置：URL 参数决定起始页，阅读页只记录不自动跳转
     const urlPage = parseInt(route.query.page, 10)
     let startPage = urlPage > 0 ? urlPage : 1
     if (startPage > totalPages.value) startPage = 1
     displayPage.value = startPage
-
+    
     // 恢复横竖屏模式（全局统一）
     const savedViewMode = localStorage.getItem(VIEW_MODE_KEY)
     if (savedViewMode === 'horizontal' || savedViewMode === 'vertical') {
       viewMode.value = savedViewMode
+    }
+    // 竖屏模式：page 1 拉到顶部，其他页滚动到对应位置
+    if (viewMode.value === 'vertical') {
+      console.log(startPage)
+      if (startPage == 1) {
+        window.scrollTo(0, 0)
+      } else {
+        setTimeout(() => scrollToCurrentPage(), 200)
+      }
     }
 
     preloadImages(normalizedPage.value - 1)
@@ -541,10 +548,10 @@ const loadBook = async () => {
     setTimeout(() => restoreSleepTimer(), 500)
 
     // 延迟绑定滚动事件（滚动在 window 上），先移除旧的避免堆积
+    window.removeEventListener('scroll', onScroll)
     setTimeout(() => {
-      window.removeEventListener('scroll', onScroll)
       window.addEventListener('scroll', onScroll, { passive: true })
-    },100)
+    }, 100)
 
   } catch (e) {
     error.value = e?.message || String(e)
