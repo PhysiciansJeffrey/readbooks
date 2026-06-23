@@ -71,7 +71,7 @@ const requestWakeLock = async () => {
 
 const releaseWakeLock = () => {
   if (wakeLockSentinel) {
-    wakeLockSentinel.release().catch(() => {})
+    wakeLockSentinel.release().catch(() => { })
     wakeLockSentinel = null
   }
 }
@@ -80,7 +80,7 @@ const goToRandomBook = async () => {
   try {
     const book = await getUnreadRandomBook()
     if (!book) return
-    router.push(`/detail/${book.id}?page=1`)
+    router.push(`/detail/${book.id}`)
   } catch (e) {
     console.error('随机跳转失败:', e)
   }
@@ -432,6 +432,7 @@ const goToPage = (page) => {
     }, 50)
   }
 }
+watch(displayPage,(n,o)=>{  console.trace('new:'+n) ; console.log('old:'+o)})
 
 // ========== 横屏点击 ==========
 const onImageAreaClick = (e) => {
@@ -483,7 +484,6 @@ const onKeydown = (e) => {
 // ========== 加载漫画 ==========
 const loadBook = async () => {
   stopAutoPlay()
-  displayPage.value = 1
   loading.value = true
   error.value = ''
   images.value = []
@@ -540,10 +540,12 @@ const loadBook = async () => {
     // 恢复倒计时（跨页面持久化）
     setTimeout(() => restoreSleepTimer(), 500)
 
-    // 延迟绑定滚动事件（滚动在 window 上）
+    // 延迟绑定滚动事件（滚动在 window 上），先移除旧的避免堆积
     setTimeout(() => {
+      window.removeEventListener('scroll', onScroll)
       window.addEventListener('scroll', onScroll, { passive: true })
-    }, 100)
+    },100)
+
   } catch (e) {
     error.value = e?.message || String(e)
   } finally {
@@ -638,20 +640,25 @@ watch(() => route.params.id, loadBook)
       <!-- 右下角浮动按钮组 -->
       <div class="floating-btns">
         <!-- <button v-if="viewMode === 'vertical'" class="float-btn" title="跳到顶部" @click="scrollToTop">↑</button> -->
-        <button v-if="viewMode === 'vertical'" class="float-btn" :class="{ 'auto-play-running': autoPlaying, 'auto-play-countdown': countdown !== null }" title="自动播放" @click="toggleAutoPlay">
+        <button v-if="viewMode === 'vertical'" class="float-btn"
+          :class="{ 'auto-play-running': autoPlaying, 'auto-play-countdown': countdown !== null }" title="自动播放"
+          @click="toggleAutoPlay">
           {{ countdown !== null ? countdown : (autoPlaying ? '⏸' : '▶') }}
         </button>
         <div v-if="autoPlaying" class="float-btn-group">
-          <button class="float-btn" :class="{ 'sleep-timer-on': sleepTimer !== null }" title="自动播放倒计时" @click="showSleepTimer = !showSleepTimer">
+          <button class="float-btn" :class="{ 'sleep-timer-on': sleepTimer !== null }" title="自动播放倒计时"
+            @click="showSleepTimer = !showSleepTimer">
             {{ sleepTimer !== null ? `⏱${sleepTimer}` : '⏱' }}
           </button>
           <div v-if="showSleepTimer" class="sleep-timer-dropdown" @click.stop>
             <div class="sleep-timer-list">
-              <button v-for="t in [15, 30, 60, 90, 120]" :key="t" class="sleep-timer-item" :class="{ active: sleepTimer === t }" @click="startSleepTimer(t)">
+              <button v-for="t in [15, 30, 60, 90, 120]" :key="t" class="sleep-timer-item"
+                :class="{ active: sleepTimer === t }" @click="startSleepTimer(t)">
                 {{ t }}分钟
               </button>
               <div class="sleep-timer-custom">
-                <input v-model="sleepTimerInput" type="number" min="1" max="999" placeholder="自定义分钟" @keyup.enter="submitCustomSleepTimer" />
+                <input v-model="sleepTimerInput" type="number" min="1" max="999" placeholder="自定义分钟"
+                  @keyup.enter="submitCustomSleepTimer" />
                 <button class="sleep-timer-go" @click="submitCustomSleepTimer">确定</button>
               </div>
             </div>
@@ -683,10 +690,11 @@ watch(() => route.params.id, loadBook)
   </div>
 </template>
 
-<style >
-#app{
+<style>
+#app {
   width: 97% !important;
 }
+
 .detail-page {
   min-height: 100vh;
   background: var(--app-bg);
